@@ -194,3 +194,42 @@ is the next value. Proposed, not built here.
 - `m0 image` not run: no docker daemon on the day. The Dockerfile and
   `.dockerignore` are edited to carry `data/` (the context is the working
   directory, so the gitignored export rides in); unverified until built.
+
+## 2026-09-21 — the image and the deploy
+
+| step | result |
+|---|---|
+| `uv run m0 image` (colima, aarch64) | ok, first attempt. In the builder `uv sync --frozen` installed `m0==0.1.0` **from the index** — the published wheel's one path no gate in the framework's repository can take — and `m0 build --release` said `built dist/ for generic`. `about.json`: `python: false`, app 4.0 MB (binary, runtime, corpus), image 103 MB unpacked |
+| the image, run locally | serves the real corpus (`535 notes, 12 themes from data/notes.jsonl`); with no `UNOTES_KEY` exits 78 with the app's own sentence |
+| `fly apps create unotes` | ok; the one name served as directory, repository and Fly app, so the plan's fallback (`unotes-wt`) was not needed |
+| `fly secrets set --stage` then `fly deploy -c deploy/fly.toml --remote-only --ha=false` | ok, first attempt, x86-64: `built dist/ for x86-64-v2`, image 24 MB compressed (81 MB unpacked), one machine, health check 1/1 |
+| https://unotes.fly.dev | anonymous `/notes` → 303 `/login`; an anonymous swap → 401, no corpus text; login sets a `Secure; HttpOnly` cookie; list, search, themes answer |
+
+Nothing on the documented deploy path failed. Two edits to the scaffold's
+files were the app's own: `data/` let into `.dockerignore` and copied
+beside the binary, `UNOTES_SECURE` in `fly.toml`. `--ha=false` replaced
+the README's "deploy, then `fly scale count 1`" — one step instead of two,
+and no moment with two machines; a candidate for `deploy/README.md`.
+
+### The measured claim, on the deploy target: NOT under a millisecond
+
+Same queries, `x-scan-us`, Fly `shared-cpu-1x` (x86-64-v2 baseline build):
+
+| query | M4, default build | Fly shared-cpu-1x, release |
+|---|---|---|
+| no filter | 5–12 µs | 14 µs |
+| `q=the` | 50 µs | 188 µs |
+| `q=football` | 430–530 µs | 1,420–1,530 µs |
+| `q=zzzzqqqq` (every byte read) | 417 µs | 1,520–2,160 µs |
+
+About 3.5x the laptop, steady over repeats (the first request was the
+slowest). The plan's bar — "comfortably under a millisecond; if not, say
+so" — holds on the M4 and does NOT hold on the smallest Fly machine: a
+worst-case search costs 1.5–2 ms of a shared vCPU. It is invisible in use
+(the round trip from here is 40–57 ms) and it bounds one loop at roughly
+500 worst-case searches a second. The scan is the naive one — a byte loop
+with a first-byte test — and the obvious next step (a SIMD first-byte
+search, the idiom the framework's own parser uses) was not taken, because
+nothing about one reader needs it. What this does say: "sub-millisecond in
+Mojo" is a claim about a core, and the docs' index page should name the
+machine when it makes it.
