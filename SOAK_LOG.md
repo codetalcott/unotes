@@ -132,10 +132,15 @@ url, …)` swap. In a browser, signing in left the list under `/login`, and
 signing out left the login form under `/notes?q=…`: the fragment swapped,
 the address did not. Login and logout are now PLAIN forms (`el("form",
 method, action)`), answered with 303. The server still answers both shapes.
-`apps/fragment_notes` (the worked example this login was copied from)
-swaps its login; it has the same fault, unnoticed because its gate reads
-the wire and not the address bar. Nothing in AGENTS.md's "When a login
-arrives" says which to use. Candidate: one sentence there.
+**Correction, same day:** this was first logged as a fault the worked
+example shares. It does not. `apps/fragment_notes`'s `render_login` IS a
+plain `<form method="post">`, with a comment saying exactly why; this app
+copied its VIEWS and wrote its own renderer without reading that one. So
+the rule exists, in a file the wheel does not ship (finding 6), and not in
+the scaffold's AGENTS.md "When a login arrives", which is the page a
+scaffolded app's author reads. Candidate: one sentence there — "login and
+logout are plain forms answered with a 303; a swap leaves the address bar
+behind."
 
 ### Finding 5 — a test cannot give a request a cookie the documented way
 
@@ -181,8 +186,11 @@ is the next value. Proposed, not built here.
 - The host turns a `make` that raises into exit 78 with the app's own
   sentence (`UNOTES_KEY must be at least 32 bytes…`). `smoke.sh` asserts
   it. This worked exactly as documented and cost nothing to get.
-- `max_workers() -> 0` with read-only state: not yet exercised at
-  `--workers 2`; owed to the soak.
+- `max_workers() -> 0` with read-only state, exercised: `--workers 2`
+  loads the corpus in each worker (the startup line prints twice), and a
+  session signed by one verifies on the other — 40 of 40 fresh
+  connections answered 200 with one cookie. Stateless sessions are what
+  make that free. Under load is owed to the soak.
 - `m0 image` not run: no docker daemon on the day. The Dockerfile and
   `.dockerignore` are edited to carry `data/` (the context is the working
   directory, so the gitignored export rides in); unverified until built.
