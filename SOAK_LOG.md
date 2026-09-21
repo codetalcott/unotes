@@ -233,3 +233,50 @@ search, the idiom the framework's own parser uses) was not taken, because
 nothing about one reader needs it. What this does say: "sub-millisecond in
 Mojo" is a claim about a core, and the docs' index page should name the
 machine when it makes it.
+
+## 2026-09-21 — synthetic soak (local; the deployed instance gets the real use)
+
+**Which traffic this is: synthetic.** mojo-http's `scripts/soak.py` speaks
+plain HTTP, so it ran against a local `bin/server --workers 2` on the real
+corpus, M4, default build. `tools/soak_manifest.json` is the manifest. The
+capture was recorded from the same binary one request at a time, then every
+response under load was compared to it — status, headers, a digest of the
+body with the scan figure and the CSRF token normalised. The claim tested:
+a byte served under load is the byte served alone.
+
+| phase | shape | result |
+|---|---|---|
+| B, 180 s | 6 keep-alive bursts, 4 signed-in sessions, SIGTERM + restart every 40 s with everything in flight | **1,739,529 verified, 0 failures**; 4 restarts, drain ≤ 3 ms, exit 0 each; RSS 16.6 → 16.7 MB; fds and threads flat |
+| A, 12 s ×4 (two workers) + ×1 (one) | the above plus an abandoner: leaves mid-body (FIN and RST alternating) and at once reuses the slot | ~100,000 verified per run; **1 failure in ~40,000 abandonments**, below |
+
+**The one failure, observed once and not explained.** In the first phase-A
+run the abandoning client got `ConnectionResetError` reading from its own
+fresh connection. Every ANSWERED response in that run was byte-exact, the
+server logged nothing, the kernel counted 0 listen-queue overflows, and the
+shape did not recur in four more runs (three at two workers, one at one).
+At ~820 new connections a second it may be the client, the kernel or a
+server close with unread input; one occurrence cannot say. Recorded because
+a rerun that passes is not an explanation.
+
+**Two findings about the instrument, neither about the server:**
+
+- Its abandoner is unpaced: it leaves after 4 KB or a time window, and
+  against a server that answers 42 KB in under a millisecond the byte count
+  always wins, so it opens ~515 connections a second. Two attempts at a
+  180 s mixed run exhausted the CLIENT's ephemeral ports inside 25 s
+  (203,993 `OSError 49`s; `gh` on the same machine failed at the same
+  moment). Through both, the server verified 736,955 responses with none
+  wrong. Hence two phases. Candidate for soak.py: a pause between
+  abandonments.
+- `body_sub` runs on decoded text. A page that echoes a non-UTF-8 query
+  into its form does not decode, keeps its CSRF token, and fails the digest
+  for the driver's reason. That route is out of the manifest and stays in
+  `test_views.mojo` and `smoke.sh`.
+
+Smaller, and the app's own: that page DOES emit the query's raw bytes inside
+a `text/html; charset=utf-8` body. `attr()` escapes markup, not encoding. A
+browser shows replacement characters; nothing breaks. Noted, not changed.
+
+Not covered here and owed to the use window: the deployed instance under
+real use (a phone that sleeps and reconnects), and a Fly deploy while a
+reader is mid-session.

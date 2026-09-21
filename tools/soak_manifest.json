@@ -1,0 +1,101 @@
+{
+  "name": "unotes",
+  "comment": "For mojo-http's scripts/soak.py, which speaks plain HTTP: run it against a LOCAL bin/server. Every page but /login and /health is behind the session, so nearly every route is `auth`. The capture is recorded from the same binary one request at a time and then held to under concurrency, abandonment and restarts: the claim is that a byte served under load is the byte served alone.",
+  "ready": "/health",
+  "headers_ignore": [
+    "date",
+    "server",
+    "connection",
+    "keep-alive",
+    "content-length",
+    "x-scan-us"
+  ],
+  "comment_headers_ignore": "x-scan-us is a measurement and differs every time. content-length follows it: the same figure is printed in the body, where body_sub below normalises it, and its digit count moves the length.",
+  "body_sub": [
+    [
+      "scanned in [0-9]+ µs",
+      "scanned in N µs"
+    ],
+    [
+      "name=\"csrf\" value=\"[^\"]*\"",
+      "name=\"csrf\" value=\"X\""
+    ]
+  ],
+  "login": {
+    "form": "/login",
+    "post": "/login",
+    "fields": {
+      "user": "reader",
+      "password": "soak-pass"
+    },
+    "expect_status": 303,
+    "check": "/notes",
+    "comment": "No CSRF token on the login form: there is no session yet to derive one from."
+  },
+  "routes": [
+    {
+      "path": "/health",
+      "class": "short"
+    },
+    {
+      "path": "/login",
+      "class": "short"
+    },
+    {
+      "path": "/notes",
+      "class": "short",
+      "auth": true
+    },
+    {
+      "path": "/notes?q=football",
+      "class": "short",
+      "auth": true
+    },
+    {
+      "path": "/notes?q=zzzzqqqq",
+      "class": "short",
+      "auth": true
+    },
+    {
+      "path": "/notes?era=1890s&type=Students&page=3",
+      "class": "short",
+      "auth": true
+    },
+    {
+      "path": "/notes/25",
+      "class": "short",
+      "auth": true
+    },
+    {
+      "path": "/notes/999999",
+      "class": "short",
+      "auth": true
+    },
+    {
+      "path": "/keywords",
+      "class": "short",
+      "auth": true
+    },
+    {
+      "path": "/keywords/athletics",
+      "class": "short",
+      "auth": true
+    },
+    {
+      "path": "/themes",
+      "class": "short",
+      "auth": true
+    },
+    {
+      "path": "/themes/7",
+      "class": "abandon",
+      "auth": true
+    },
+    {
+      "path": "/keywords",
+      "class": "abandon",
+      "auth": true
+    }
+  ],
+  "comment_routes": "No non-UTF-8 query here, though the app answers one (test_views.mojo and smoke.sh hold that): the page echoes the query's bytes into the form, soak.py applies body_sub to decoded text, and a body that does not decode keeps its CSRF token and fails the digest for the driver's reason, not the server's. Run with --abandon 1 --abandon-seconds 2: two fast abandoners opened ~515 connections a second and exhausted the CLIENT's ephemeral ports (OSError 49) inside 15 s."
+}

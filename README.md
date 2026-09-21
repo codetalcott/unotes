@@ -4,6 +4,7 @@ A reader for a research-notes corpus — faceted, searched in memory, behind
 one login. One compiled Mojo binary on the [`m0`](https://m0serve.dev/mojo/)
 framework, server-rendered and swapped in place by htmx 4; no Python at run
 time. Scaffolded with `uvx m0 new unotes` from the published `m0 0.1.0`.
+Deployed at https://unotes.fly.dev (one Fly machine; the login is the owner's).
 
 This repository holds **no notes**. `data/sample-*.jsonl` is invented and is
 what the tests, `smoke.sh` and CI read. The real corpus is exported into
