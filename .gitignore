@@ -1,0 +1,13 @@
+.venv/
+bin/
+dist/
+__pycache__/
+.vscode/
+smoke.log
+smoke.body
+
+# The real corpus and the theme map are the owner's unpublished material.
+# They reach the image from the working directory, never from git; smoke.sh
+# and CI fail if either is ever tracked. data/sample-*.jsonl is invented.
+data/notes.jsonl
+data/themes.jsonl
