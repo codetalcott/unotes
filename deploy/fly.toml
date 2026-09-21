@@ -20,6 +20,10 @@ primary_region = "iad"
 [env]
   # A comment frame every 25 s keeps a quiet stream open through the proxy.
   M0_SSE_HEARTBEAT_MS = "25000"
+  # Behind Fly's TLS: the session cookie is `Secure`. UNOTES_KEY (32+ bytes)
+  # and UNOTES_PASSWORD are SECRETS (`fly secrets set`), never written here;
+  # without them the server exits 78 and the deploy fails its health check.
+  UNOTES_SECURE = "1"
 
 [http_service]
   internal_port = 8080

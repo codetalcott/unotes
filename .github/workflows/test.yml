@@ -14,6 +14,15 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       # --locked: the lock is the toolchain. A pyproject edited without
       # `uv lock` fails here rather than building on something else.
+      # The real notes and the theme map are unpublished. smoke.sh refuses
+      # them too; this says so before anything else runs.
+      - name: The real corpus is not tracked
+        run: |
+          for private in data/notes.jsonl data/themes.jsonl; do
+            if git ls-files --error-unmatch "$private" >/dev/null 2>&1; then
+              echo "::error::$private is tracked by git"; exit 1
+            fi
+          done
       - run: uv sync --locked
       - run: uv run m0 doctor
       - run: uv run m0 test

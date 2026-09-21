@@ -52,6 +52,9 @@ FROM ${BASE}
 ARG BASE
 RUN useradd --system --create-home --uid 10001 app
 COPY --from=build /src/dist/ /app/
+# The corpus beside the binary: the sample always, the real export when the
+# working directory held one. The server prefers the real one and says which.
+COPY data/ /app/data/
 COPY --from=build /tmp/facts/ /tmp/facts/
 
 # What the image is, measured from inside it as its last layer. The build

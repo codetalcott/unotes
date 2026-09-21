@@ -67,3 +67,122 @@ Measured while writing the export; each is a row to look at in
   12 themes, 6–81 notes each, every cited id exists. One `[359-431]` in a
   quotation is a page range, not a citation; it is outside the paragraph
   the export reads.
+
+## 2026-09-21 — the app: corpus, login, pages, views
+
+Built in one sitting on the documented path: `corpus.mojo` (load, facets,
+the scan), `auth.mojo`, `pages.mojo`, `views.mojo`; 22 tests, a rewritten
+`smoke.sh`, a browser walk (`tools/browse.py`). The first full build of four
+new modules compiled at the first attempt but for one deprecation warning
+(a nested `@parameter` closure — replaced with a plain function).
+
+**Timings on this app** (M4): `m0 test` 7.1 s for two files (it was 3.9 s
+for the scaffold's one — it grows by the file, each a separate `mojo run`);
+`m0 build` 12.5 s after an edit. The test loop was the loop, as AGENTS.md
+says: every logic error below was found there, none by a build.
+
+### The measured claim: the in-memory scan
+
+535 real notes, 800 KB of haystack, `x-scan-us` on every list response and
+the same figure in the page:
+
+| query | matches | scan |
+|---|---|---|
+| no filter | 535 | 5–12 µs |
+| facet only (`/keywords/athletics`) | 41 | 8 µs |
+| `q=the` (matches early in nearly every note) | 526 | 50 µs |
+| `era=1930s&type=Students&q=chapel` | 5 | 90 µs |
+| `q=football` | 39 | 439–534 µs |
+| `q=zzzzqqqq` (no match: every byte read) | 0 | 417 µs |
+
+Worst case is about half a millisecond, a naive byte scan, a default
+(non-release) build, one worker. Whole requests measured by curl on
+loopback: 0.5–1.2 ms. The plan's "comfortably under a millisecond" holds;
+FTS5 would not have been faster at this size, only more to deploy.
+
+### Finding 2 — no public way to build a query string
+
+`url_for` encodes path parameters and nothing else. A filtered list's URL
+(`/notes?q=a%20b&era=1890s`) needs a percent-encoder, and the framework's
+is private (`router._percent_encode_into`). The app wrote its own
+`query_encode` (20 lines, tested). Any app with a GET filter form will
+write this. Candidate: `url_for(PATTERN, params..., query=...)` or a public
+`query_string` helper.
+
+### Finding 3 — the vocabulary cannot move the address bar
+
+`Fragment[Htmx]` generates the swap and nothing about history. A filter
+that swaps without changing the URL cannot be linked to or reloaded, which
+for a research tool is the feature. AGENTS.md says never to type an `hx-`
+swap attribute by hand; this app types ONE, `hx-push-url="true"`, through
+the `attrs` slot of `f.el(...)` — on every link and on the filter form. It
+works in htmx 4.0.0 (browser-verified: URL moves, back restores the list
+AND the form's values). This is D17's territory (`HX-*` setters, not
+built) seen from the element side. Candidate: a `push=True` on `f.el` /
+`swap`, which both vocabularies can honour in their own spelling.
+
+Cosmetic, same place: a GET form sends every field, so the pushed URL is
+`/notes?q=football&era=1890s&institution=&type=&keyword=`. The app's own
+`list_url` writes only what is set; the browser's form does not.
+
+### Finding 4 — a swap that changes WHO YOU ARE wants a navigation
+
+First written as the scaffold teaches — every form an `f.el("form", verb,
+url, …)` swap. In a browser, signing in left the list under `/login`, and
+signing out left the login form under `/notes?q=…`: the fragment swapped,
+the address did not. Login and logout are now PLAIN forms (`el("form",
+method, action)`), answered with 303. The server still answers both shapes.
+`apps/fragment_notes` (the worked example this login was copied from)
+swaps its login; it has the same fault, unnoticed because its gate reads
+the wire and not the address bar. Nothing in AGENTS.md's "When a login
+arrives" says which to use. Candidate: one sentence there.
+
+### Finding 5 — a test cannot give a request a cookie the documented way
+
+A view that reads `req.cookies` sees nothing from a `Cookie` header on a
+hand-built `HTTPRequest`: only the server's parser fills the jar. Seven of
+twelve view tests failed on it (every signed-in one answered 303/401).
+Fixed by reading framework source (`lightbug_http/cookie/request_cookie_jar.mojo`,
+`http/request.mojo`): build a `RequestCookieJar`, `add_pairs("name=value")`,
+pass `cookies=`. The scaffold's test file has helpers for GET and POST and
+none for a cookie, and AGENTS.md's login section names the session module
+but not how to test a view behind it. **First time framework source had to
+be read to proceed.** Candidate: a `_with_cookie` helper in the scaffold's
+test, or the two lines in AGENTS.md.
+
+### Finding 6 — the worked example the scaffold points at is not installed
+
+AGENTS.md: "`apps/fragment_notes` in the framework's repository is the
+worked example." The wheel ships the five source trees and no `apps/`, so
+the login's only reference is a GitHub URL the page does not give. Read
+from a local checkout here. Candidate: the URL, or the example's auth as a
+third template (see the next entry).
+
+### D44's question: was the second login a copy of the first?
+
+**Yes.** `auth.mojo` is `apps/fragment_notes`'s login with the names
+changed: `Auth.from_env` (fail closed, key ring with a previous key, TTL,
+`Secure`), `accepts` over digests, `session_of`, `private` (`no-store`),
+`csrf_refusal` with its fail-closed first line, and in `views.mojo` the
+`refuse` pair (303 for a navigation, 401 + the form for a swap) and the
+two-line guard opening every view. About 150 lines, of which perhaps ten
+are this app's own decisions (cookie name, a 12-hour TTL, a 32-byte key
+floor, plain-form login). Eleven views open with the same two lines.
+That is the evidence D38/D44 were waiting for: an auth template, or a
+`m0_http` helper holding `Auth` + `session_of` + `refuse` + `csrf_refusal`,
+is the next value. Proposed, not built here.
+
+### Smaller things
+
+- The editor cannot resolve `m0_http`/`lightbug_http`/`m0_host` (every
+  import is a red squiggle) — known: the scaffold writes no LSP settings
+  because `mojo.lsp.includeDirs` takes only absolute paths. `uv run m0
+  include` prints the path to paste. A new user meets this in minute one.
+- The host turns a `make` that raises into exit 78 with the app's own
+  sentence (`UNOTES_KEY must be at least 32 bytes…`). `smoke.sh` asserts
+  it. This worked exactly as documented and cost nothing to get.
+- `max_workers() -> 0` with read-only state: not yet exercised at
+  `--workers 2`; owed to the soak.
+- `m0 image` not run: no docker daemon on the day. The Dockerfile and
+  `.dockerignore` are edited to carry `data/` (the context is the working
+  directory, so the gitignored export rides in); unverified until built.

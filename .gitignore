@@ -11,3 +11,4 @@ smoke.body
 # and CI fail if either is ever tracked. data/sample-*.jsonl is invented.
 data/notes.jsonl
 data/themes.jsonl
+smoke.jar

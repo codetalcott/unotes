@@ -1,38 +1,34 @@
 # unotes
 
-A web application in Mojo on the [m0](https://m0serve.dev) framework: one
-compiled binary, no Python at run time.
+A reader for a research-notes corpus — faceted, searched in memory, behind
+one login. One compiled Mojo binary on the [`m0`](https://m0serve.dev/mojo/)
+framework, server-rendered and swapped in place by htmx 4; no Python at run
+time. Scaffolded with `uvx m0 new unotes` from the published `m0 0.1.0`.
 
-```sh
-uv sync                      # the pinned mojo toolchain and m0, into .venv
-uv run m0 build              # src/server.mojo -> bin/server (~10 s after an edit)
-bin/server --port 8080       # serve; http://localhost:8080
-```
+This repository holds **no notes**. `data/sample-*.jsonl` is invented and is
+what the tests, `smoke.sh` and CI read. The real corpus is exported into
+`data/notes.jsonl` and `data/themes.jsonl`, both gitignored; `smoke.sh` and
+CI fail if either is ever tracked.
 
-Or, while editing: `uv run m0 dev -- --port 8080` builds, serves, and
-rebuilds on every save. The running server is replaced only by a build
-that succeeded.
+    uv sync
+    uv run m0 test                  # 22 tests, no link, no server
+    ./smoke.sh                      # build, serve the sample, probe the wire
 
-```sh
-uv run m0 test               # test/test_*.mojo, 2–4 s: the fast loop
-uv run m0 doctor             # toolchain checks + the binary's resolved configuration
-./smoke.sh                   # build, serve, probe the wire, stop
-uv run m0 image              # the deploy image (docker), and what it measured of itself
-```
+    # with the real database (stdlib Python; the app never opens SQLite):
+    python3 tools/export.py PATH/notes.sqlite PATH/theme-map.md
 
-The routes are the docstring of `src/server.mojo`. `AGENTS.md` is the rules
-that are not obvious from the code, written for a coding agent and as
-useful to a person. `deploy/README.md` is the way to an image and to Fly.io.
+    UNOTES_KEY=$(python3 -c "import secrets;print(secrets.token_hex(24))") \
+    UNOTES_PASSWORD=... bin/server --port 8080
 
-Commit `uv.lock`: it is what makes the next checkout the same toolchain.
+The server prefers `data/notes.jsonl` when it exists, else the sample, and
+prints which; `UNOTES_NOTES`/`UNOTES_THEMES` name other files. It refuses to
+start (exit 78) without `UNOTES_KEY` (32+ bytes) and `UNOTES_PASSWORD`.
+`UNOTES_USER` (default `reader`), `UNOTES_TTL` (seconds, default 12 h),
+`UNOTES_SECURE=1` (behind TLS) and `UNOTES_KEY_PREV` (rotation) are optional.
 
-## Editor
-
-The Mojo VS Code extension resolves imports through `mojo.lsp.includeDirs`,
-which takes absolute paths and passes them on unexpanded — so it is a
-setting for your machine, not a file in this repository. In
-`.vscode/settings.json` (ignored by git):
-
-```json
-{ "mojo.lsp.includeDirs": ["<output of: uv run m0 include>", "<this directory>/src"] }
-```
+`src/server.mojo`'s docstring has the routes. `AGENTS.md` is the framework's
+rules for an agent; `SOAK_LOG.md` is the running record of building this on
+the documented path — what failed, what the docs got wrong, what was
+measured. `tools/browse.py BASE_URL` walks the app in a real browser
+(`uv run --no-project --with playwright python tools/browse.py …`; it signs
+in as `reader` / `probe-pass`). `deploy/README.md` has the image and Fly.
