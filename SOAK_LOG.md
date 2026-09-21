@@ -109,6 +109,11 @@ is private (`router._percent_encode_into`). The app wrote its own
 write this. Candidate: `url_for(PATTERN, params..., query=...)` or a public
 `query_string` helper.
 
+*Upstream, 2026-09-21:* mojo-http #369 adds `Query` beside `url_for`
+(`q.add(name, value)`, `q.on(path)`; SPEC N36), with this app's encoder as
+its seed. `query_encode` and `_put` stay here until an `m0` release carries
+that source.
+
 ### Finding 3 — the vocabulary cannot move the address bar
 
 `Fragment[Htmx]` generates the swap and nothing about history. A filter
@@ -124,6 +129,12 @@ built) seen from the element side. Candidate: a `push=True` on `f.el` /
 Cosmetic, same place: a GET form sends every field, so the pushed URL is
 `/notes?q=football&era=1890s&institution=&type=&keyword=`. The app's own
 `list_url` writes only what is set; the browser's form does not.
+
+*Upstream, 2026-09-21:* mojo-http #370 adds `push=True` to `f.el` and
+`f.swap` (SPEC N37). Not quite "both vocabularies": `Htmx` writes
+`hx-push-url`, and `Datastar` REFUSES, its 1.0.3 bundle having no history
+handling for the back button to meet (DECISIONS D46). Only a `get` is
+pushed. The hand-typed attribute stays here until an `m0` release.
 
 ### Finding 4 — a swap that changes WHO YOU ARE wants a navigation
 
@@ -268,6 +279,9 @@ a rerun that passes is not an explanation.
   moment). Through both, the server verified 736,955 responses with none
   wrong. Hence two phases. Candidate for soak.py: a pause between
   abandonments.
+  *Upstream, 2026-09-21:* mojo-http #368, `--abandon-pause` (50 ms).
+  Measured against this app, two abandoners, 6 s: paced, 212 abandonments
+  and 0 failures; unpaced, 16,339 and 597 `OSError 49`.
 - `body_sub` runs on decoded text. A page that echoes a non-UTF-8 query
   into its form does not decode, keeps its CSRF token, and fails the digest
   for the driver's reason. That route is out of the manifest and stays in
