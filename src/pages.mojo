@@ -5,12 +5,12 @@ the same place and any URL can be opened whole or swapped in. Escaping is
 named at every hole: `text(...)` for data in an element, `attr(name, v)` for
 data in an attribute, a bare string only for markup this file wrote.
 
-One attribute here is typed by hand: `hx-push-url`. The vocabulary
-generates the swap and nothing about history, and a filtered list that
-cannot be linked to is not worth filtering (SOAK_LOG.md, finding 3).
+Every swap here is a `get` to a view that can be reloaded, so every swap is
+pushed (`push=True`): a filtered list that cannot be linked to is not worth
+filtering (SOAK_LOG.md, finding 3).
 """
 
-from m0_http import Fragment, Html, Htmx, PageShell, attr, el, flag, text, url_for, void
+from m0_http import Fragment, Html, Htmx, PageShell, Query, attr, el, flag, text, url_for, void
 
 from auth import CSRF_FIELD
 from corpus import Corpus, Facet, Filter, PAGE_SIZE, page_count
@@ -85,52 +85,20 @@ struct Site(PageShell):
 # --- URLs ----------------------------------------------------------------------
 
 
-def query_encode(s: String) -> String:
-    """Percent-encode one query value. Unreserved bytes pass; every other
-    byte, space included, is `%XX`. Byte-wise, so a value that is not UTF-8
-    is encoded, not trapped on."""
-    comptime HEX = "0123456789ABCDEF"
-    var src = s.as_bytes()
-    var hex = HEX.as_bytes()
-    var out = List[UInt8](capacity=len(src) + 8)
-    for i in range(len(src)):
-        var b = src[i]
-        var plain = (
-            (b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122)
-            or b == 45 or b == 46 or b == 95 or b == 126
-        )
-        if plain:
-            out.append(b)
-        else:
-            out.append(37)
-            out.append(hex[Int(b >> 4)])
-            out.append(hex[Int(b & 15)])
-    return String(unsafe_from_utf8=Span(out))
-
-
-def _put(mut url: String, name: String, value: String):
-    if value.byte_length() == 0:
-        return
-    url += "&" if "?" in url else "?"
-    url += name
-    url += "="
-    url += query_encode(value)
-
-
 def list_url(want: Filter, page: Int) raises -> String:
-    """The list's URL for `want` at `page`: only what is set, in one order,
-    so one view has one address."""
-    var url = url_for(NOTES)
-    _put(url, "q", want.q)
-    _put(url, "era", want.era)
-    _put(url, "type", want.kind)
-    _put(url, "institution", want.institution)
-    _put(url, "keyword", want.keyword)
+    """The list's URL for `want` at `page`: only what is set (`Query.add`
+    skips an empty value), in one order, so one view has one address."""
+    var q = Query()
+    q.add("q", want.q)
+    q.add("era", want.era)
+    q.add("type", want.kind)
+    q.add("institution", want.institution)
+    q.add("keyword", want.keyword)
     if want.commented:
-        _put(url, "commented", "1")
+        q.add("commented", "1")
     if page > 1:
-        _put(url, "page", String(page))
-    return url^
+        q.add("page", String(page))
+    return q.on(url_for(NOTES))
 
 
 def excerpt(s: String, limit: Int) -> String:
@@ -151,9 +119,7 @@ def excerpt(s: String, limit: Int) -> String:
 def _link(f: Frag, url: String, label: String) raises -> String:
     """A link that swaps the fragment AND moves the address bar, and is a
     plain link without JavaScript."""
-    return f.el(
-        "a", "get", url, attr("href", url) + attr("hx-push-url", "true"), text(label)
-    )
+    return f.el("a", "get", url, attr("href", url), text(label), push=True)
 
 
 def _chrome(f: Frag, user: String, csrf: String) raises -> String:
@@ -254,8 +220,7 @@ def render_list(
     var commented = attr("type", "checkbox") + attr("name", "commented") + attr("value", "1")
     if want.commented:
         commented += flag("checked")
-    f.raw(f.el("form", "get", url_for(NOTES),
-        attr("class", "filter") + attr("hx-push-url", "true"),
+    f.raw(f.el("form", "get", url_for(NOTES), attr("class", "filter"),
         void("input", attr("type", "search") + attr("name", "q") + attr("value", want.q)
             + attr("placeholder", "search notes, sources, keywords, comments")),
         _select("era", "era", corpus.era_facet, want.era),
@@ -264,6 +229,7 @@ def render_list(
         _select("keyword", "keyword", corpus.keyword_facet, want.keyword),
         el("label", "", void("input", commented), " has a comment"),
         el("button", "", "Filter"),
+        push=True,
     ))
     var pages = page_count(len(matches))
     var page = want.page
