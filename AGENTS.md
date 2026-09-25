@@ -47,11 +47,17 @@ functions in `test/test_*.mojo`; adding one needs no registration.
   pointer and a closure is not one. A guard is an early return of
   `Optional[HTTPResponse]` on the view's first lines.
 - Routes are `comptime` patterns given to the table AND to `url_for`, so a
-  misspelled route is a compile error. Never build a path by hand.
+  misspelled route is a compile error. Never build a path by hand, and
+  never a query string: `Query().add(name, value)` then `q.on(url_for(X))`
+  encodes both halves, request data included.
 - State that lives in one process answers `max_workers() -> 1`, and
   `M0_WORKERS=2` is then refused rather than served as two different
   copies. Move the state out (a database, the shared page) before raising it.
 - `form(req)` is `None` unless the body is a urlencoded form. Check it.
+- `read_signals(req)` is Datastar's signal store as JSON text: the query on
+  GET and DELETE, the body otherwise. An action sent with `{contentType:
+  'form'}` carries no signals: read it with `form(req)`. The Datastar frame
+  builders raise on a line break in a selector, mode or event id.
 
 ## Rendering
 
@@ -59,6 +65,10 @@ functions in `test/test_*.mojo`; adding one needs no registration.
   and `f.swap(verb, url)` generate the attributes that target it. **Never
   type an `hx-*` or `data-on:*` swap attribute by hand**, and never retype
   the id as `#id`.
+- A swap that arrives at a VIEW — a filtered list, a detail — takes
+  `push=True`, so the address bar follows and the view can be reloaded and
+  linked to. A `get` only; `Fragment[Datastar]` refuses it (Datastar has no
+  history handling), so a view that needs an address there is a plain link.
 - Escaping is named at every hole: `text(x)` for data in an element,
   `attr(name, x)` for data in an attribute (it owns the quotes), `raw`/a
   bare string only for markup this code wrote. Request data in a bare
@@ -79,8 +89,23 @@ session cookie exists, **every write needs a CSRF token**: a POST's as a
 hidden field; a DELETE's as an `X-CSRF-Token` header from a hand-written
 `hx-headers` attribute (htmx 4 puts a DELETE's fields in the query string,
 and a token in a URL is a token in every log) — the ONE `hx-` attribute
-typed by hand. `m0_http.session` has the signed cookie and `csrf_token`;
-`apps/fragment_notes` in the framework's repository is the worked example.
+typed by hand. `m0_http.session` has the signed cookie and `csrf_token`.
+The worked example is not installed with the framework: it is
+`apps/fragment_notes/server.mojo` at
+https://github.com/codetalcott/mojo-http — read its renderer as well as
+its views.
+
+- **Login and logout are PLAIN forms** (`el("form", attr("method", "post")
+  + attr("action", url))`), answered with a 303 — never `f.el("form", …)`.
+  A swap changes the fragment and not the address bar, so signing in
+  leaves the application under `/login` and signing out leaves the login
+  form under whatever was open.
+- **A hand-built request parses no `Cookie` header**; only the server's
+  parser fills `req.cookies`. A test of a view behind a session fills the
+  jar itself: `var jar = RequestCookieJar()` (from
+  `lightbug_http.cookie.request_cookie_jar`), `jar.add_pairs("name=value")`,
+  then `HTTPRequest(uri, headers=…, cookies=jar^)`. Without it every such
+  test is answered as signed out.
 
 ## Streaming (SSE)
 

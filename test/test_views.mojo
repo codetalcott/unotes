@@ -18,7 +18,7 @@ from m0_http import SessionKeys, Views, issue_session, verify_session
 
 from auth import Auth, SESSION_COOKIE
 from corpus import Filter, load_corpus
-from pages import excerpt, list_url, query_encode
+from pages import excerpt, list_url
 from views import App, app_urls
 
 comptime KEY = "0123456789abcdef0123456789abcdef"
@@ -212,7 +212,24 @@ def test_list_url_names_only_what_is_set_and_encodes_it() raises:
     want.q = String("a b&c")
     want.kind = String("Ref's")
     assert_equal(list_url(want, 3), "/notes?q=a%20b%26c&type=Ref%27s&page=3")
-    assert_equal(query_encode("é"), "%C3%A9")
+    var accented = Filter()
+    accented.era = String("é")
+    assert_equal(list_url(accented, 1), "/notes?era=%C3%A9")
+
+
+def test_every_swap_moves_the_address_bar() raises:
+    """Every swap here is a `get` to a view that can be reloaded, so every
+    one is pushed; the two writes (sign in, sign out) are plain forms."""
+    var app = _app()
+    var table = app_urls()
+    var cookie = _cookie(app)
+    var paths: List[String] = ["/notes", "/notes/10", "/keywords", "/themes/1"]
+    for i in range(len(paths)):
+        var body = _body(table.dispatch(_get(paths[i], cookie, partial=True), app))
+        var gets = body.count("hx-get=")
+        assert_true(gets > 0, paths[i])
+        assert_equal(body.count('hx-push-url="true"'), gets, paths[i])
+        assert_false("hx-post=" in body, paths[i])
 
 
 def test_an_excerpt_never_cuts_a_codepoint() raises:
