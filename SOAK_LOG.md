@@ -5,7 +5,7 @@ failure, every doc sentence that was wrong or missing, every time framework
 source had to be read to proceed. Kept from the first command. Newest last.
 
 Stack: `m0 0.1.0` from PyPI (published 2026-09-21), `mojo 1.1.0`, macOS
-arm64 (M4). Read before starting, as a new user would: `packaging/m0/QUICKSTART.md`
+arm64 (M4); `m0 0.2.0` from 2026-09-24 (the first upgrade, below). Read before starting, as a new user would: `packaging/m0/QUICKSTART.md`
 (the site's `/mojo/` pages were not yet deployed), then the scaffold's
 `AGENTS.md`.
 
@@ -114,6 +114,10 @@ write this. Candidate: `url_for(PATTERN, params..., query=...)` or a public
 its seed. `query_encode` and `_put` stay here until an `m0` release carries
 that source.
 
+*Taken, 2026-09-24:* `m0 0.2.0` carries `Query`. `query_encode` and `_put`
+are deleted; `list_url` is `Query().add(…)` then `q.on(url_for(NOTES))`, and
+the test that pinned this app's URLs passes against it unedited.
+
 ### Finding 3 — the vocabulary cannot move the address bar
 
 `Fragment[Htmx]` generates the swap and nothing about history. A filter
@@ -135,6 +139,11 @@ Cosmetic, same place: a GET form sends every field, so the pushed URL is
 `hx-push-url`, and `Datastar` REFUSES, its 1.0.3 bundle having no history
 handling for the back button to meet (DECISIONS D46). Only a `get` is
 pushed. The hand-typed attribute stays here until an `m0` release.
+
+*Taken, 2026-09-24:* `m0 0.2.0` carries `push=True`. Both hand-typed
+attributes are deleted, and a test holds that every swap on four pages is
+pushed. The cosmetic half stands: the browser walk on 0.2.0 still pushes
+`/notes?q=football&era=1890s&institution=&type=&keyword=`.
 
 ### Finding 4 — a swap that changes WHO YOU ARE wants a navigation
 
@@ -294,3 +303,212 @@ browser shows replacement characters; nothing breaks. Noted, not changed.
 Not covered here and owed to the use window: the deployed instance under
 real use (a phone that sleeps and reconnects), and a Fly deploy while a
 reader is mid-session.
+
+*Taken, 2026-09-24:* both, on the deployed instance, in "the real use the
+log owed" below — the phone emulated, and said so.
+
+## 2026-09-24 — the first upgrade: `m0 0.1.0` → `0.2.0`
+
+`m0 0.2.0` reached PyPI at 01:49 UTC on 2026-09-25 (framework 1.6.0, commit
+`5a683eb`), gated on the same `mojo 1.1.0`. It is the first `m0` upgrade an
+application outside the framework's repository has taken: everything above
+was built on one version.
+
+| step | result |
+|---|---|
+| the pin, `m0==0.1.0` → `0.2.0`, then `uv lock` and `uv sync` | ok; `uv.lock` names `m0 0.2.0` from pypi.org. `mojo` did not move — 0.2.0 is gated on 1.1.0, as 0.1.0 was — so `pyproject.toml`'s "move them together" was a move of one |
+| `uv run m0 doctor` | ok, every check |
+| `uv run m0 test`, the app unedited | 22 of 22 |
+| `uv run m0 build`, the app unedited | ok, 13.1 s, no warning |
+| `./smoke.sh`, the app unedited | ok |
+
+The version alone changed nothing this app could see. The change 0.2.0 says
+a call site must handle — `m0-datastar`'s frame builders now raise — is in
+a tree this app does not import, and a request that now reaches a view as
+its client sent it (no invented `Content-Length`, `Connection` or `Host`)
+changes no header this app reads: it reads its CSRF header and its cookie.
+
+### What the upgrade let the app delete
+
+- `query_encode` and `_put`, 28 lines, for `Query` (finding 2). `list_url`
+  is seven `q.add(…)` and a `q.on(url_for(NOTES))`, and the URLs it writes
+  are byte for byte the ones its test pinned on 0.1.0. The test's `é` case
+  moved from the deleted encoder to `list_url`.
+- Both hand-typed `hx-push-url` attributes, and the module docstring's
+  paragraph excusing them, for `push=True` on `_link` and on the filter form
+  (finding 3). The vocabulary writes the attribute after the swap's three
+  rather than before them; nothing reads the order. A new test,
+  `test_every_swap_moves_the_address_bar`, counts `hx-push-url="true"`
+  against `hx-get=` on four pages and finds no `hx-post`; with `push=True`
+  taken off `_link` it fails.
+- `src/pages.mojo` 381 → 347 lines; 23 tests; `./smoke.sh` ok. The browser
+  walk (`tools/browse.py`, real corpus) reads as it did on 0.1.0: the filter
+  and each link move the address bar, back restores the list and the form's
+  `q`, one `section` in the DOM.
+- Framework source read: `Query` in `m0_http/router.mojo` and `Fragment.el`
+  in `html.mojo` (`push` is a keyword after `*children`), before editing
+  rather than after a failure. The CHANGELOG and 0.2.0's `AGENTS.md` name
+  both; the read was a check, and may not have been needed.
+
+### Finding 7 — an upgrade brings the framework, not the page an agent reads first
+
+This app's `AGENTS.md` was byte for byte what 0.1.0's `m0 new` wrote.
+0.2.0's template is 25 lines longer, and five of its additions came from
+this log: `Query` (finding 2), `push=True` (3), login as plain forms (4), a
+cookie in a test (5), the worked example's URL (6); a sixth covers
+`read_signals`. `uv sync` updates the source trees and not a word of that
+page, so an app upgraded the documented way keeps an `AGENTS.md` that says
+"never build a path by hand" and nothing of a query string, and points at a
+worked example that is not installed. No `m0` command refreshes it, and none
+says it is stale. Taken here by hand — the 0.2.0 wheel's
+`m0/templates/_common/AGENTS.md` rendered with the app's name, its one
+placeholder — which was safe only because this app never edited its copy.
+Of everything else `m0 new` writes, only the `live` template's
+`src/pages.mojo` differs between the two wheels, so a `views` app has
+nothing more to take. Candidate: `m0 doctor` names a scaffold-written file
+that differs from the installed wheel's template — a warning, not a merge.
+
+### Finding 8 — nothing deployed says which `m0` built it
+
+The image's `about.json` records the APP's version (`"version":"0.1.0"`,
+this app's own, which the upgrade did not touch); `--doctor` prints the
+host's configuration and no framework version. What built a binary is in
+`uv.lock`, in git, and in `_build_info.json` in whichever venv built it, so
+"is the deployed app on the latest `m0`?" was answered from a release date.
+Candidate: `m0 build` carries `_build_info.json`'s `m0`, `framework` and
+`commit` into the binary's `--doctor`, and `m0 image` into `about.json`.
+
+### The image and the deploy, on 0.2.0
+
+| step | result |
+|---|---|
+| `fly deploy -c deploy/fly.toml --remote-only --build-only --push --image-label m0-0.2.0` | ok, 63 s. The builder's `uv sync --frozen` installed `m0==0.2.0` from the index; `built dist/ for x86-64-v2`; `about.json`: `python: false`, app 4.46 MB, image 81 MB unpacked, 24 MB compressed |
+| `fly deploy -c deploy/fly.toml --image registry.fly.io/unotes:m0-0.2.0 --ha=false`, under a reader (below) | ok, 18 s; release v2, one machine |
+| the scan on the deploy target, `x-scan-us`, six of each | no filter 5–8 µs, `q=the` 184–284, `q=football` 1,243–1,611, `q=zzzzqqqq` 1,171–1,690 — 0.1.0's figures, give or take what six samples on a shared vCPU can tell apart |
+
+Building apart from the rollout was this entry's choice, so that the
+reader's window held the machine swap and not a remote compile.
+
+## 2026-09-24 — the real use the log owed
+
+### A deploy while a reader is mid-session
+
+**Which traffic this is: real, on the deployed instance, from one laptop.**
+Two clients held the site across the rollout above: a signed-in Chrome
+(`tools/reader.py … hold 200`) tapping a nav link every ~2.3 s, and
+`tools/probe.sh`, a signed-in swap of `/notes/25` back to back (about three
+a second). `fly logs` recorded the machine. The password is the deployed
+secret, copied off the machine (`fly ssh console -C 'printenv …'`) into a
+file that was never printed.
+
+| UTC | event |
+|---|---|
+| 03:06:24 | `fly deploy --image` starts |
+| 03:06:26 | the machine starts pulling the image. The probe's last answer from the old binary is at 03:06:26.4; its next request, sent at 03:06:26.7, is not answered until the new binary is up |
+| 03:06:28 | SIGINT to `/app/server` (Fly's default); the proxy logs `PC01 instance refused connection` — a request tried against the closed listener and retried, not failed: no client saw it |
+| 03:06:29 | the old server exits 0 |
+| 03:06:30 | the new one listens, corpus loaded ("Machine created and started in 4.282s") |
+| 03:06:31.2 | the reader's held tap is answered: 200, after 2,382 ms |
+| 03:06:32.3 | the probe's held request is answered: 200, the fragment, after 5,586 ms |
+| 03:06:42 | `fly deploy` exits 0 |
+
+- **Nothing failed and no one was signed out.** The probe: 435 of 435
+  answered 200 with the fragment. The reader: 85 taps, 89 requests, none
+  failed, none answered ≥ 400, no reload. Its session was signed before the
+  deploy and verified after it, because the key is a secret the deploy does
+  not touch — the second thing stateless sessions made free (the first was
+  two workers, above).
+- **A deploy is one slow tap**: 2.4 s for the reader, 5.6 s for the probe,
+  which was further into the hold. With one machine there is none to route
+  to, and Fly's proxy holds and retries rather than fails. Whether any
+  request was in flight at the SIGINT this run cannot say — the host logs
+  nothing when it drains — but none was lost, and the old server exited 0
+  within the second, well inside the 5 s kill timeout.
+
+### Finding 9 — a request with no answer is a dead link, silently
+
+Rehearsed first on loopback, with nothing in front: the same reader, and a
+server that was simply gone (SIGINT, restarted 8 s later). Three taps in the
+gap each failed at once (`ERR_CONNECTION_REFUSED`), and the page did
+nothing — no message, no change, the link dead until the server was back,
+when the next tap worked in the same session. htmx 4 swaps every ANSWER; a
+request that gets none fires `htmx:error`, which nothing here listens to.
+Behind Fly's proxy a reader does not meet this (it holds, above). On a host
+with nothing in front, or a gap longer than the proxy will hold, the silent
+dead link is what they get, and on a phone it reads as a missed tap.
+Candidate: the scaffold's shell carries the one listener that puts "the
+server did not answer — try again" in the fragment.
+
+### A phone that sleeps and reconnects
+
+**Which traffic this is: an EMULATED phone, on the deployed instance and on
+loopback.** `tools/reader.py … sleep N --phone` is Chrome's Pixel 7
+emulation (viewport, touch, user agent) on the laptop. It signs in, filters,
+opens a note, then sleeps: the context goes offline and the page is frozen
+through DevTools (`Page.setWebLifecycleState`) for N seconds; then it wakes
+and taps. It is not a phone: no radio goes down, no OS discards the tab, and
+the connection pool is desktop Chrome's. What it does exercise is the app's
+side of waking — a page left open, a connection gone idle, a tap.
+
+**Asleep ten minutes on the deployed instance** (03:09:20 → 03:19:20 UTC,
+inside the twelve-hour session). The reader went to sleep on `/notes/25`,
+reached through a filter:
+
+| on waking | answer | address bar | shown |
+|---|---|---|---|
+| tap Themes | 200 `/themes`, 86 ms | `/themes` | the themes |
+| back | 200 `/notes/25`, 38 ms | `/notes/25` | Note 25 |
+| reload | 200 `/notes/25`, 18 ms | `/notes/25` | Note 25 |
+
+Nine requests, none failed, none answered ≥ 400. The first tap took 86 ms
+against 21–62 ms for every warm tap in this entry; whether that was a new
+connection to Fly's edge, this run does not say. Inside the session's
+lifetime, waking is invisible. Past it, it is not:
+
+**Past the session's lifetime** — loopback, `UNOTES_TTL=8`, asleep 12 s:
+the case a phone meets overnight, since a session lasts twelve hours. The
+reader was on `/notes/25`.
+
+| on waking | answer | address bar | shown |
+|---|---|---|---|
+| tap Themes | 401 `/themes` | `/themes` | the login form, "signed out (no cookie)" |
+| back | 303 `/notes/25` → 200 `/login` | `/notes/25` | the login form |
+| reload | 303 → 200 `/login` | `/login` | the login form |
+| sign in | 303 `/notes` | `/notes` | the unfiltered list |
+
+### Finding 10 — a refusal is pushed, and signing in forgets where the reader was
+
+The refusal itself is right: a swap gets 401 and the form, as `refuse`
+intends. Two things around it are not.
+
+- **`push=True` pushes a 401.** htmx 4.0.0 decides history without looking
+  at the status (`#resolveHistoryAction`), so the address bar says `/themes`
+  over a login form, and history holds an entry that shows what it does not
+  name. Finding 4 from the other side: there a swap failed to move the
+  address bar when it should; here it moves it when it should not.
+  `push=True` is a claim about the view a swap arrives at, and a refusal is
+  not that view. htmx honours `HX-Push-Url: false` on a response (it
+  normalises `"false"` to no push). Candidate upstream: a refusal answered to
+  a swap carries it — `page_or_fragment` at any status ≥ 400. This app's
+  `refuse` could set the header by hand today, against D17's "`HX-*`
+  setters, not built".
+- **Signing in always lands on `/notes`.** The login form posts to `/login`,
+  which answers 303 `/notes` whatever was open, so a phone that slept on a
+  note wakes to the unfiltered list. Candidate — this app's, and the auth
+  template's that the D44 entry proposes: the refusal renders the
+  form with a hidden `next` naming the request's own path, and a sign-in
+  answers 303 to it; a local path only, or it is an open redirect.
+
+Smaller, same place: "signed out (no cookie)" is what a person reads. The
+browser dropped the cookie at its `Max-Age`, so the server never saw one,
+and the reason reads like a fault. "Your session ended; sign in again."
+
+### Smaller things
+
+- `HEAD` is 405 on every view route (`Allow: GET, OPTIONS`), `/health`
+  included, on 0.1.0's deploy and on 0.2.0's. That is SPEC N2 as written — a
+  method a view does not take is 405 with `Allow` — and HEAD is such a
+  method; K12, K13 and L27 hold HEAD for the WSGI and ASGI bridges only.
+  RFC 9110 wants HEAD wherever GET is, and an uptime check that sends one
+  would call this app down. Candidate: a route that takes GET answers HEAD
+  as its GET, the body dropped.
