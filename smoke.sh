@@ -25,7 +25,7 @@ fail() {
 
 # The guard. The real notes and the theme map are unpublished; git history
 # is permanent, and one `git add -A` with them present publishes them.
-for private in data/notes.jsonl data/themes.jsonl; do
+for private in data/notes.sqlite data/theme-map.md data/notes.jsonl data/themes.jsonl; do
     if git ls-files --error-unmatch "$private" >/dev/null 2>&1; then
         fail "$private is TRACKED by git. Remove it from the index and from history before anything is pushed."
     fi
@@ -42,9 +42,9 @@ env -u UNOTES_KEY -u UNOTES_PASSWORD bin/server --doctor >smoke.log 2>&1
 code=$?
 [ "$code" = 78 ] || fail "with no UNOTES_KEY --doctor exited $code, not 78: $(cat smoke.log)"
 
-# The sample BY NAME: with no variable the server prefers the real export
+# The sample BY NAME: with no variable the server prefers the real database
 # when one is in data/, and this probe asserts the sample's counts.
-UNOTES_NOTES=data/sample-notes.jsonl UNOTES_THEMES=data/sample-themes.jsonl \
+UNOTES_NOTES=data/sample.sql UNOTES_THEMES=data/sample-theme-map.md \
 UNOTES_KEY="smoke-key-0123456789abcdef0123456789" UNOTES_PASSWORD="smoke-pass" \
     bin/server --port "$PORT" >smoke.log 2>&1 &
 PID=$!

@@ -5,8 +5,9 @@
 !pyproject.toml
 !uv.lock
 !src/
-# The corpus. data/sample-*.jsonl is committed; data/notes.jsonl and
-# data/themes.jsonl are gitignored and ride in from the WORKING DIRECTORY,
-# which is what a build context is. An image built with them present holds
-# unpublished material: keep it in a private registry.
+# The corpus. data/sample.sql and data/sample-theme-map.md are committed;
+# data/notes.sqlite and data/theme-map.md are gitignored and ride in from
+# the WORKING DIRECTORY, which is what a build context is. An image built
+# with them present holds unpublished material -- the whole database, not
+# only the columns the app shows: keep it in a private registry.
 !data/

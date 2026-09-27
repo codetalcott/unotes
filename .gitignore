@@ -6,9 +6,14 @@ __pycache__/
 smoke.log
 smoke.body
 
-# The real corpus and the theme map are the owner's unpublished material.
-# They reach the image from the working directory, never from git; smoke.sh
-# and CI fail if either is ever tracked. data/sample-*.jsonl is invented.
+# The real notes database and theme map are the owner's unpublished
+# material. They reach the image from the working directory, never from
+# git; smoke.sh and CI fail if either is ever tracked. data/sample.sql and
+# data/sample-theme-map.md are invented. The two .jsonl files are the old
+# export's, gone with tools/export.py, and ignored while a copy lingers.
+data/notes.sqlite
+data/notes.sqlite-*
+data/theme-map.md
 data/notes.jsonl
 data/themes.jsonl
 smoke.jar

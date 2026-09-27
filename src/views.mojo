@@ -34,20 +34,22 @@ from m0_http import (
     wants_fragment,
 )
 
-from corpus import Corpus, Filter, load_corpus
+from corpus import Corpus, Filter
 from pages import (
     FAVICON, HEALTH, KEYWORD, KEYWORDS, LOGIN, LOGOUT, NOTE, NOTES, ROOT, THEME, THEMES,
     Site,
     render_keywords, render_list, render_login, render_missing, render_note,
     render_theme, render_themes,
 )
+from sources import load_corpus
 
 comptime NOTES_ENV = "UNOTES_NOTES"
 comptime THEMES_ENV = "UNOTES_THEMES"
-comptime REAL_NOTES = "data/notes.jsonl"
-comptime REAL_THEMES = "data/themes.jsonl"
-comptime SAMPLE_NOTES = "data/sample-notes.jsonl"
-comptime SAMPLE_THEMES = "data/sample-themes.jsonl"
+comptime REAL_NOTES = "data/notes.sqlite"
+comptime REAL_THEMES = "data/theme-map.md"
+comptime SAMPLE_NOTES = "data/sample.sql"
+comptime SAMPLE_THEMES = "data/sample-theme-map.md"
+comptime OLD_EXPORT = "data/notes.jsonl"
 
 comptime LOGIN_ENV = "UNOTES"
 """The login's prefix: `UNOTES_KEY` (32+ bytes) and `UNOTES_PASSWORD`
@@ -83,22 +85,34 @@ struct App(ViewState):
     @staticmethod
     def make(ctx: HostContext) raises -> Self:
         """Which files, in order: the ones the environment names; else the
-        real export if it is there (`data/notes.jsonl`, gitignored, and in
-        the image only when it was in the working directory that built it);
-        else the invented sample, so a checkout with no access to the notes
-        still serves. A path the environment names and that cannot be read
-        is an error (exit 78), never a quiet fall back. The line printed
-        below says which it was."""
+        real database if it is there (`data/notes.sqlite`, gitignored, and
+        in the image only when it was in the working directory that built
+        it) with `data/theme-map.md` beside it; else the invented sample, so
+        a checkout with no access to the notes still serves. A path the
+        environment names and that cannot be read is an error (exit 78),
+        never a quiet fall back. The line printed below says which it was.
+
+        The one refusal among the defaults: the old export with no database
+        beside it. Serving the sample there would put invented notes where
+        the real ones were, with nothing but that line to say so."""
         var notes = getenv(NOTES_ENV, "")
         var themes = getenv(THEMES_ENV, "")
         if notes.byte_length() == 0:
             if exists(REAL_NOTES):
                 notes = String(REAL_NOTES)
                 themes = String(REAL_THEMES) if exists(REAL_THEMES) else String("")
+            elif exists(OLD_EXPORT):
+                raise Error(String(
+                    OLD_EXPORT, " is tools/export.py's output, which unotes no",
+                    " longer reads: put the database at ", REAL_NOTES, " and the",
+                    " theme map at ", REAL_THEMES, " (README), and delete the export",
+                ))
             else:
                 notes = String(SAMPLE_NOTES)
                 themes = String(SAMPLE_THEMES)
         var corpus = load_corpus(notes, themes)
+        for i in range(len(corpus.warnings)):
+            print(String("unotes: WARNING ", corpus.warnings[i]), flush=True)
         print(String(
             "unotes: ", len(corpus), " notes, ", len(corpus.theme_titles),
             " themes from ", notes,

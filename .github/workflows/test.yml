@@ -18,7 +18,7 @@ jobs:
       # them too; this says so before anything else runs.
       - name: The real corpus is not tracked
         run: |
-          for private in data/notes.jsonl data/themes.jsonl; do
+          for private in data/notes.sqlite data/theme-map.md data/notes.jsonl data/themes.jsonl; do
             if git ls-files --error-unmatch "$private" >/dev/null 2>&1; then
               echo "::error::$private is tracked by git"; exit 1
             fi
