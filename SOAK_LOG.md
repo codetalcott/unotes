@@ -665,3 +665,97 @@ render, and the view goes with it. Checked: none of the real corpus's 164
 keywords or the sample's 15 is either. `tools/export.py` does not filter
 them, so the day one is exported, its notes stop rendering. Noted, not
 changed.
+
+## 2026-09-27 — the export step, dropped
+
+Finding 1 was that an application could not open its own SQLite database,
+so `tools/export.py` turned `notes.sqlite` and `theme-map.md` into JSON
+lines and the app read those. `m0 0.3.0` ships `m0_sqlite`, which opens
+libsqlite3 at run time and links nothing, so the app now reads both files
+itself and the export is deleted. The database is opened with
+`open_readonly`: it is the owner's working database, and the app never
+writes it.
+
+| step | result |
+|---|---|
+| `src/sources.mojo`: the export's rules, in Mojo | 530 lines, docstrings included, against the export's 134. Mojo has no regex, and six patterns became byte scanners. Compiled at the first attempt |
+| the sample | `data/sample.sql` and `data/sample-theme-map.md`, invented, replacing `data/sample-*.jsonl`. Stored as FileMaker left the real data: repeating values split at a line feed, CR LF or vertical tab, `::` comments, entered dates in all three shapes, a non-breaking space. Read by the OLD export, it gives the old sample exactly, keyword order aside |
+| tests | 36, up from 25. `test_sources.mojo` is new, with 12. Each of nine rules, reverted in turn, fails a test |
+| equivalence, on the real data | 4,851 fields byte for byte identical to the export's (535 notes × 9, 12 themes × 3), and the export's one warning, row 520's date, word for word |
+| the database, after reading it | untouched: mtime, size and hash the same, and no journal, `-wal` or `-shm` beside it |
+| startup to `/health`, the real corpus | 26–43 ms from `notes.sqlite`, 43–45 ms from the JSON lines, three runs each |
+| `bin/server` | 1,354,368 → 1,472,528 bytes: +118 KB for the SQLite bindings |
+| `uv run m0 build` | 13.8 s |
+| `./smoke.sh`; the browser walk on the real corpus | ok; the walk reads as the JSONL one did, count for count |
+
+The data exercised the rules, so "identical" is not vacuous. 141 rows
+have repeating separators in `type`, `institution` or `era`, 249 entered
+dates come from the squeezed field alone, and 3 comments open with `::`.
+One rule it did not exercise: no cell the app reads has whitespace at
+either end. Mojo's `String.strip()` knows ASCII whitespace only, and
+Python's `str.strip()`, which shaped the export, knows 29 characters. So
+`strip_space` keeps Python's set, and today that is insurance rather than
+a fix.
+
+Framework source read, before editing: `m0_sqlite`'s `__init__.mojo` (its
+exports), `conn.mojo` (`open`, `open_readonly`, `open_memory`, `execute`),
+`stmt.mojo` (`column_text` answers "" for NULL and does not check UTF-8)
+and `lib.mojo` (where it looks for libsqlite3).
+
+### Finding 1, revisited
+
+What the export cost, as finding 1 listed it:
+
+- **134 lines.** Now 530 in the app, docstrings included. The export is
+  gone, and so is the step, but not the work: the rules moved rather than
+  disappeared, at about four lines of Mojo for each of Python's.
+- **The flat reader shapes the format.** Gone. Lists go straight into the
+  corpus, and the refusal of a value holding `|` went with the format.
+- **A second copy of the data, stale without a word.** Gone locally: the
+  app reads the database where it lives. For an image one copy remains,
+  since a build context cannot reach it. `VACUUM INTO` makes the copy,
+  because a `.backup` of a WAL database stays WAL, and a WAL file cannot
+  be opened read-only in the image's read-only `/app/data`. Measured on a
+  scratch database: `.backup` keeps header bytes 18–19 at 2, and
+  `VACUUM INTO` writes 1.
+- What it bought: no C dependency, a binary that links nothing, and a real
+  file swappable for an invented one. The binary still links nothing: the
+  image installs `libsqlite3-0` (so the scaffold's runtime-libraries line,
+  declined at the second upgrade, is taken now) and `m0_sqlite` opens it.
+  The sample is SQL text, still invented and still swappable, and still no
+  binary in git.
+
+What it costs that the export did not:
+
+- **The image carries the whole database**: `fm_id`, FileMaker's own
+  `keywords` text (483 rows), the stray record's source description and
+  "Finish notes" in `field_9–11` (its three cells are the only ones there;
+  `field_4` is empty), and the full-text index. The export carried a
+  projection of it. An image built with the
+  real files already belonged in a private registry; now it holds more.
+- **The move from one input to the other has a trap.** A working
+  directory with the old export and no database would have served the
+  invented sample in place of the notes, saying so only in a startup line.
+  The server now refuses that case (78), and the image build fails while
+  the old export is in `data/`, so `fly deploy` stops before it touches a
+  machine.
+
+### Finding 12 — the page an agent reads first sends a reader of someone else's database to `open`
+
+`AGENTS.md`'s storage section names two constructors: "`open(path)` puts
+the file in WAL mode … `open_memory()` is for tests." Following it here
+would have switched the owner's research database to WAL, which persists
+in the file's header, and left `-wal` and `-shm` files beside it. That is a
+write to a database this app has no business writing, made by opening it.
+`open_readonly(path)` exists, and leaves the journal mode alone. It creates
+nothing, and a missing file is refused rather than created. It was found in
+the package's exports, not on the page. This app also uses `open_memory()`
+outside tests, for the sample. Candidate: one line in that section: "a
+database the app only reads (another tool's, or its input) is
+`open_readonly(path)`: no WAL switch, no create".
+
+*Correction to the entry above:* its keyword counts, first written as 48
+and 22, were distinct characters, not keywords. The check iterated the
+joined string, and so it examined no keyword at all. Recounted: 164 in the
+real corpus and 15 in the sample, none of them `.` or `..`. The entry was
+corrected before either was published.
