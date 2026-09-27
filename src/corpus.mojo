@@ -1,17 +1,14 @@
 """The notes and the themes, held in memory, and the scan that filters them.
 
-No HTTP in this file, so every function here is reachable by `uv run m0
-test`. The input is what `tools/export.py` writes: one JSON object per
-line, every value a string, multi-valued fields joined with `|`.
+No HTTP and no I/O in this file, so every function here is reachable by
+`uv run m0 test`. `sources.mojo` fills a `Corpus` from the notes database
+and the theme map, once, at startup.
 
 Search is a byte scan over a lowered copy of each note. A query comes from
 a request and may not be UTF-8, so nothing here slices a `String`: the scan
 reads `as_bytes()` spans and compares bytes.
 """
 
-from m0_core import parse_json_string
-
-comptime SEP = "|"
 comptime PAGE_SIZE = 25
 
 
@@ -48,16 +45,6 @@ def contains_bytes(hay: Span[UInt8, _], needle: Span[UInt8, _]) -> Bool:
                 return True
         i += 1
     return False
-
-
-def split_values(joined: String) -> List[String]:
-    """The values of a `|`-joined field; an empty field has none."""
-    var out = List[String]()
-    if joined.byte_length() == 0:
-        return out^
-    for part in joined.split(SEP):
-        out.append(String(part))
-    return out^
 
 
 def _has(values: List[String], wanted: String) -> Bool:
@@ -158,6 +145,9 @@ struct Corpus(Movable, Sized):
     var theme_tensions: List[String]
     var theme_notes: List[List[Int]]
 
+    var warnings: List[String]
+    """What loading noticed and did not refuse, for `make` to print."""
+
     def __init__(out self):
         self.ids = List[Int]()
         self.notes = List[String]()
@@ -178,27 +168,26 @@ struct Corpus(Movable, Sized):
         self.theme_titles = List[String]()
         self.theme_tensions = List[String]()
         self.theme_notes = List[List[Int]]()
+        self.warnings = List[String]()
 
     def __len__(self) -> Int:
         return len(self.ids)
 
-    def add_note_line(mut self, line: String, line_number: Int) raises:
-        """One exported line. A line that is not the format is refused by
-        number: a note silently missing is worse than a server not starting."""
-        var id = _field(line, "id", line_number)
-        var id_number: Int
-        try:
-            id_number = Int(id)
-        except:
-            raise Error(String("notes line ", line_number, ": id ", id, " is not a number"))
-        var note = _field(line, "note", line_number)
-        var source = _field(line, "source", line_number)
-        var comment = _field(line, "comment", line_number)
-        var keywords = split_values(_field(line, "keywords", line_number))
-        var kinds = split_values(_field(line, "type", line_number))
-        var institutions = split_values(_field(line, "institution", line_number))
-        var eras = split_values(_field(line, "era", line_number))
-
+    def add_note(
+        mut self,
+        id: Int,
+        *,
+        var note: String,
+        var source: String,
+        var date: String,
+        var comment: String,
+        var entered: String,
+        var keywords: List[String],
+        var kinds: List[String],
+        var institutions: List[String],
+        var eras: List[String],
+    ):
+        """One note, counted into every facet it carries."""
         var hay = String(note, "\n", source, "\n", comment)
         for i in range(len(keywords)):
             hay += "\n"
@@ -211,40 +200,27 @@ struct Corpus(Movable, Sized):
         for i in range(len(eras)):
             self.era_facet.count(eras[i])
 
-        self.ids.append(id_number)
+        self.ids.append(id)
         self.haystacks.append(_lower(hay))
         self.notes.append(note^)
         self.sources.append(source^)
         self.comments.append(comment^)
-        self.dates.append(_field(line, "date", line_number))
-        self.entered.append(_field(line, "entered", line_number))
+        self.dates.append(date^)
+        self.entered.append(entered^)
         self.keywords.append(keywords^)
         self.kinds.append(kinds^)
         self.institutions.append(institutions^)
         self.eras.append(eras^)
 
-    def add_theme_line(mut self, line: String, line_number: Int) raises:
-        var n = _field(line, "n", line_number)
-        var cited = List[Int]()
-        for part in split_values(_field(line, "notes", line_number)):
-            var id: Int
-            try:
-                id = Int(part)
-            except:
-                raise Error(String("themes line ", line_number, ": note id ", part, " is not a number"))
-            if self.find(id) < 0:
-                raise Error(String("themes line ", line_number, ": cites note ", id, ", which is not loaded"))
-            cited.append(id)
-        try:
-            self.theme_numbers.append(Int(n))
-        except:
-            raise Error(String("themes line ", line_number, ": n ", n, " is not a number"))
-        self.theme_titles.append(_field(line, "title", line_number))
-        self.theme_tensions.append(_field(line, "tension", line_number))
-        self.theme_notes.append(cited^)
+    def add_theme(mut self, n: Int, var title: String, var tension: String, var notes: List[Int]):
+        """One theme; `notes` are ids already in the corpus."""
+        self.theme_numbers.append(n)
+        self.theme_titles.append(title^)
+        self.theme_tensions.append(tension^)
+        self.theme_notes.append(notes^)
 
     def finish(mut self):
-        """Sort the facets once every line is in."""
+        """Sort the facets once every note is in."""
         self.era_facet.sort(by_name=True)
         self.kind_facet.sort()
         self.institution_facet.sort()
@@ -301,47 +277,7 @@ struct Corpus(Movable, Sized):
         return out^
 
 
-def _field(line: String, name: String, line_number: Int) raises -> String:
-    var got = parse_json_string(line, name)
-    if not got:
-        raise Error(String("line ", line_number, ": no string field `", name, "`"))
-    return got.take()
-
-
 def page_count(matches: Int) -> Int:
     if matches == 0:
         return 1
     return (matches + PAGE_SIZE - 1) // PAGE_SIZE
-
-
-def load_corpus(notes_path: String, themes_path: String) raises -> Corpus:
-    """Both files, or an error naming the path and the line. An empty
-    `themes_path` is a corpus with no themes."""
-    var corpus = Corpus()
-    var number = 0
-    with open(notes_path, "r") as f:
-        for raw in f.read().split("\n"):
-            number += 1
-            var line = String(raw)
-            if line.byte_length() == 0:
-                continue
-            try:
-                corpus.add_note_line(line, number)
-            except e:
-                raise Error(String(notes_path, ": ", e))
-    if len(corpus) == 0:
-        raise Error(String(notes_path, ": no notes in it"))
-    if themes_path.byte_length() > 0:
-        number = 0
-        with open(themes_path, "r") as f:
-            for raw in f.read().split("\n"):
-                number += 1
-                var line = String(raw)
-                if line.byte_length() == 0:
-                    continue
-                try:
-                    corpus.add_theme_line(line, number)
-                except e:
-                    raise Error(String(themes_path, ": ", e))
-    corpus.finish()
-    return corpus^

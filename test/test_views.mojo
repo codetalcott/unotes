@@ -17,8 +17,9 @@ from lightbug_http.uri import URI
 
 from m0_http import Login, SessionKeys, Views, issue_session, verify_session
 
-from corpus import Filter, load_corpus
+from corpus import Filter
 from pages import excerpt, list_url
+from sources import load_corpus
 from views import App, SESSION_COOKIE, app_urls, login_from_env
 
 comptime KEY = "0123456789abcdef0123456789abcdef"
@@ -30,7 +31,7 @@ def _app() raises -> App:
     var login = Login(
         String("reader"), String("s3cret"), keys^, Int64(600), False, String(SESSION_COOKIE)
     )
-    return App(load_corpus("data/sample-notes.jsonl", "data/sample-themes.jsonl"), login^)
+    return App(load_corpus("data/sample.sql", "data/sample-theme-map.md"), login^)
 
 
 def _cookie(app: App) raises -> String:

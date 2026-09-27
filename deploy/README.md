@@ -20,10 +20,17 @@ compiles for something newer than the baseline, and whatever follows a bare
 `--` goes to `docker build` as it is (`-- --platform linux/amd64`). `m0
 image` needs docker and nothing else: the compiler runs in the builder.
 
-`m0 0.3.0`'s template also installs `libsqlite3-0` in the runtime stage, for
-`m0_sqlite` to open, and points `M0_DB` at a volume under `/app/data`. This
-app opens no database — `/app/data` is the corpus, copied in — so its image
-does neither; the Dockerfile's comment at the runtime stage says so.
+The runtime stage installs `libsqlite3-0`, which `m0_sqlite` opens at run
+time (`about.json`'s `libs` says so), and copies `data/` in: the sample
+always, and the real `notes.sqlite` and `theme-map.md` when the working
+directory holds them (the README has the copy). The app reads its database
+and never writes it, so unlike `m0 0.3.0`'s template the image sets no
+`M0_DB` and wants no volume. The build fails if the old export
+(`data/notes.jsonl`, `data/themes.jsonl`) is in the context.
+
+An image built with the real files holds the whole database — every column
+and the full-text index, not only what the app shows — so it belongs in
+Fly's private registry and nowhere else.
 
 ## Fly.io
 

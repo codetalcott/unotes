@@ -1,22 +1,17 @@
-"""The corpus: loading the invented sample, the facets, the scan.
+"""The corpus: the invented sample loaded whole, the facets, the scan.
 
-Everything here reads `data/sample-*.jsonl`, which is committed and
-invented, so this passes on a checkout that has never seen the real notes.
+Everything here reads `data/sample.sql` and `data/sample-theme-map.md`,
+which are committed and invented, so this passes on a checkout that has
+never seen the real notes. How they are read is `test_sources.mojo`'s.
 """
 
 from std.testing import TestSuite, assert_equal, assert_false, assert_true
 
-from corpus import (
-    Corpus,
-    Filter,
-    contains_bytes,
-    load_corpus,
-    page_count,
-    split_values,
-)
+from corpus import Corpus, Filter, contains_bytes, page_count
+from sources import load_corpus, repeating
 
-comptime NOTES = "data/sample-notes.jsonl"
-comptime THEMES = "data/sample-themes.jsonl"
+comptime NOTES = "data/sample.sql"
+comptime THEMES = "data/sample-theme-map.md"
 
 
 def _sample() raises -> Corpus:
@@ -41,7 +36,7 @@ def test_a_multi_valued_field_is_every_value() raises:
     assert_equal(len(c.institutions[i]), 2)
     # A note with no era has no values, not one empty one.
     assert_equal(len(c.eras[c.find(8)]), 0)
-    assert_equal(len(split_values("")), 0)
+    assert_equal(len(repeating("")), 0)
 
 
 def test_a_facet_counts_a_two_valued_note_under_both() raises:
@@ -110,17 +105,6 @@ def test_themes_cite_notes_both_ways() raises:
     assert_equal(len(citing), 1)
     assert_equal(c.theme_numbers[citing[0]], 1)
     assert_equal(len(c.themes_citing(12)), 0)
-
-
-def test_a_line_that_is_not_the_format_is_refused_by_number() raises:
-    var c = Corpus()
-    var raised = False
-    try:
-        c.add_note_line(String('{"id":"1","note":"x"}'), 7)
-    except e:
-        raised = True
-        assert_true("line 7" in String(e))
-    assert_true(raised)
 
 
 def test_pages() raises:
