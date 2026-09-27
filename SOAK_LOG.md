@@ -5,7 +5,8 @@ failure, every doc sentence that was wrong or missing, every time framework
 source had to be read to proceed. Kept from the first command. Newest last.
 
 Stack: `m0 0.1.0` from PyPI (published 2026-09-21), `mojo 1.1.0`, macOS
-arm64 (M4); `m0 0.2.0` from 2026-09-24 (the first upgrade, below). Read before starting, as a new user would: `packaging/m0/QUICKSTART.md`
+arm64 (M4); `m0 0.2.0` from 2026-09-24 (the first upgrade, below); `m0
+0.3.0` from 2026-09-27 (the second). Read before starting, as a new user would: `packaging/m0/QUICKSTART.md`
 (the site's `/mojo/` pages were not yet deployed), then the scaffold's
 `AGENTS.md`.
 
@@ -512,3 +513,155 @@ and the reason reads like a fault. "Your session ended; sign in again."
   RFC 9110 wants HEAD wherever GET is, and an uptime check that sends one
   would call this app down. Candidate: a route that takes GET answers HEAD
   as its GET, the body dropped.
+
+  *Taken upstream in `m0 0.3.0` (N38); see the second upgrade, below.*
+
+## 2026-09-27 — the second upgrade: `m0 0.2.0` → `0.3.0`
+
+`m0 0.3.0` reached PyPI at 18:08 UTC on 2026-09-27 (framework 1.7.0, commit
+`1946db3`), gated on the same `mojo 1.1.0`, and on `max-core 26.6.0` for an
+application that installs it; this one does not. Two of its changes began
+here: the HEAD fix, which its CHANGELOG credits to this app's deploy, and
+`m0_http.login`, whose docstring calls it the login `apps/fragment_notes`
+wrote by hand "and that the first application outside this repository
+copied with its names changed".
+
+| step | result |
+|---|---|
+| the pin, `m0==0.2.0` → `0.3.0`, then `uv lock` and `uv sync` | ok; `mojo` did not move |
+| `uv run m0 doctor` | ok, every check. Two lines are new: `max-gated` (absent, optional, naming the `uv add`) and `scaffold`, naming seven files (below) |
+| `uv run m0 test`, the app unedited | 23 of 23 |
+| `uv run m0 build`, the app unedited | ok, 14.5 s, no warning |
+| `./smoke.sh`, the app unedited | ok |
+
+As with 0.2.0, the version alone changed nothing the app could see except
+on the wire: HEAD.
+
+### What the upgrade let the app delete
+
+- `src/auth.mojo`, all 156 lines, for `m0_http.login`. The layer's `Login`
+  is this file's `Auth` with the cookie's name added; `accepts` and its
+  digest compares, `csrf_refusal` and `private` (now `no_store`) are line
+  for line but for a message. The question the deleted file's docstring asked — whether the
+  second hand-rolled login is a copy of the first — was answered upstream
+  by setting the two side by side, and now neither app has one. What stays,
+  in `views.mojo`, is policy: the prefix `UNOTES`, the cookie
+  `unotes_session`, the user `reader`, twelve hours — four constants and
+  `login_from_env`, which passes them.
+- `refuse` is one call to `refuse_signed_out`. `login` is `sign_in` and
+  `set_cookie` where it was `accepts`, `issue_session`, `verify_session` and
+  a hand-built cookie line; `logout` is `sign_out`; the hidden CSRF field is
+  `csrf_input`. The swapped sign-in that answers the list still works:
+  `SignIn.session` is the verdict the page renders behind.
+- `src/` 1,184 → 1,055 lines.
+- `main` now reads the login before `serve`, as the `auth` template's does
+  and the new `AGENTS.md` says to, so `bin/server --doctor` refuses a
+  missing `UNOTES_KEY` (78) where before only a run did; `smoke.sh` holds
+  it. The price is that `uv run m0 doctor` on a machine with a built binary
+  needs the two variables, or exits 78 on its app line. CI's does not: it
+  runs before anything is built.
+
+The configuration is stricter, all of it from `Login.from_env`:
+
+- `UNOTES_SECURE` is `1` or `0`, and `true` is refused. The hand-written
+  policy read anything but `1` as off, so `true` behind TLS dropped
+  `Secure` without a word. The deploy sets `1`.
+- `UNOTES_KEY_PREV` must be 32 bytes, as the key must; `UNOTES_TTL` is at
+  most 400 days; `UNOTES_USER` must be a name a session can carry.
+- A CSRF refusal's detail now reads "the request did not carry this
+  session's CSRF token".
+
+Two tests are new. `test_the_login_policy_is_read_from_unotes_variables`
+pins the four names and defaults through the environment, and the `true`
+refusal. `test_a_get_route_answers_head_as_its_get` covers five routes
+and the guard. That makes 25 tests. `./smoke.sh` is ok, now probing HEAD and
+`--doctor`. The browser walk (`tools/browse.py`, the real corpus,
+loopback) reads as it did on 0.2.0: a wrong password is the alert at
+`/login`, a sign-in lands on `/notes`, the filter and a note move the
+address bar, back restores the list and the form's `q`, and signing out
+lands on `/login`, with one `section` in the DOM. The one console line is
+the wrong password's 401.
+
+Framework source read, before editing and not after a failure:
+`m0_http/login.mojo`, whole, and the `auth` template's `views.mojo` and
+`server.mojo`, written into a scratch directory with `m0 new --template
+auth` as the worked example. The CHANGELOG named both.
+
+### What closed upstream, and what did not
+
+- HEAD (smaller things, above): N38. On loopback `HEAD /health` is 200
+  and a signed-in HEAD of a note 200; through the table a signed-out one
+  is 303, as the GET.
+- Finding 7 (an upgrade brings the framework, not the page): the doctor's
+  `scaffold` line (N42). This upgrade is its first use; finding 11 is what
+  it found.
+- Findings 4–6 went into 0.2.0's `AGENTS.md` as prose. The worked example
+  is now installed as `m0_http.login` and the `auth` template.
+
+Not closed: 8, since `--doctor` still names no `m0` and `about.json` no
+framework. Not 9: no template's shell listens for `htmx:error`. Not 10:
+`refuse_signed_out` sets no `HX-Push-Url: false` and takes no `next`, so a
+401 is still pushed and a sign-in still lands on `/notes`. The refusal now
+lives in the layer, so each candidate is one edit there rather than one
+per app. "signed out (no cookie)" is still what a person reads, and the
+`auth` template writes the same words.
+
+### What the scaffold line named, and what was taken
+
+`uv run m0 doctor` named seven files. To tell which differ because `m0`
+changed them and which because this app did, BOTH versions' scaffolds went
+into a scratch directory (`uvx --from m0==0.2.0 m0 new unotes`, and
+0.3.0's), and each file was diffed three ways:
+
+| file | `m0` changed it | this app had edited it | taken |
+|---|---|---|---|
+| `AGENTS.md` | yes: the login, storage, MAX, upgrading | no | verbatim |
+| `deploy/README.md` | yes: `libsqlite3`, a volume, `M0_THREADS` | no | the `M0_THREADS` sentence, and a paragraph on what was declined |
+| `deploy/Dockerfile` | yes: `libsqlite3-0`, `/app/data`, `M0_DB`, `libs` in `about.json` | yes: the corpus `COPY` | a comment saying why nothing was |
+| `deploy/fly.toml` | yes: a commented-out `[mounts]` | yes: `UNOTES_SECURE` | nothing |
+| `.gitignore` | yes: `*.db` | yes: the corpus | nothing |
+| `.dockerignore` | no | yes | — |
+| `.github/workflows/test.yml` | no | yes | — |
+
+`pyproject.toml`, which the doctor does not compare, gained a comment on
+the `max-core` pin; taken, since the new `AGENTS.md` points at it.
+
+Everything `m0` changed outside `AGENTS.md` was for SQLite, and this app
+opens none; its input is the JSONL export (finding 1, which `m0_sqlite` in
+the wheel now answers: the app could open `notes.sqlite` itself). Taking the Dockerfile as written would have broken
+the build: its `RUN mkdir /app/data` follows this app's `COPY data/
+/app/data/`, and `mkdir` fails on a directory that exists. The template now
+claims `/app/data` as the writable database directory, and this app ships
+its corpus there, read-only. And the `AGENTS.md` taken verbatim says
+"`libsqlite3-0` is in the image already", which for this image is false:
+the page's claim rests on a Dockerfile the app declined.
+
+### Finding 11 — the scaffold line cannot tell an upgrade's change from the app's own
+
+The line is the upgrade path's one signal, and it names a file whichever
+side moved. Of the seven here, two were named for this app's edits alone,
+two for `m0`'s alone, and three for both, and the line reads the same for
+all seven. D52 chose this ("only the application can tell which") and
+declined a record of what the old `m0` wrote: that base "is recorded
+nowhere", and a version stamp "would make every upgrade report every
+file". What it took here was the old scaffold, which is recoverable from
+PyPI for any published `m0`, given which one wrote the project, and that
+only `uv.lock`'s history says. `AGENTS.md` says to write the NEW scaffold,
+not the old. After this upgrade the line names the same seven again, five
+of them for decisions already made, so at 0.4.0 it will not say which of
+them 0.4.0 changed. Candidates, the cheap one first: the upgrading section
+says to write the old scaffold too (`uvx --from m0==OLD m0 new`) and diff
+three ways. Or `m0 new` records each file's hash: unlike a version stamp,
+a hash moves only when that file's content does, so the doctor could say
+"edited here", "changed upstream" or both, and stay quiet on the rest.
+
+### A latent refusal: `url_for` and a dot
+
+`url_for` now raises on a `.` or `..` parameter (N5). The one `url_for`
+parameter here that comes from data is a keyword: `url_for(KEYWORD, k)` on
+every note page that carries it and on `/keywords`. Before, such a keyword
+was a link a browser resolved somewhere else. Now it is a raise inside the
+render, and the view goes with it. Checked: none of the real corpus's 164
+keywords or the sample's 15 is either. `tools/export.py` does not filter
+them, so the day one is exported, its notes stop rendering. Noted, not
+changed.
