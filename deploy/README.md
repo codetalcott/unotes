@@ -20,6 +20,11 @@ compiles for something newer than the baseline, and whatever follows a bare
 `--` goes to `docker build` as it is (`-- --platform linux/amd64`). `m0
 image` needs docker and nothing else: the compiler runs in the builder.
 
+`m0 0.3.0`'s template also installs `libsqlite3-0` in the runtime stage, for
+`m0_sqlite` to open, and points `M0_DB` at a volume under `/app/data`. This
+app opens no database — `/app/data` is the corpus, copied in — so its image
+does neither; the Dockerfile's comment at the runtime stage says so.
+
 ## Fly.io
 
 ```sh
@@ -34,4 +39,5 @@ fly scale count 1 -a unotes
 - `scale count 1`: the first deploy creates two machines. State held in
   the process is one machine's; see the comment in `fly.toml`.
 - One loop. On one shared vCPU a second worker or thread cannot run beside
-  the first, so `M0_WORKERS`/`M0_THREADS` stay unset.
+  the first, so `M0_WORKERS`/`M0_THREADS` stay unset. On more than one
+  vCPU, set `M0_THREADS` to the count.

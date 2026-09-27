@@ -37,6 +37,10 @@ uv run m0 build || fail "m0 build"
 env -u UNOTES_KEY -u UNOTES_PASSWORD bin/server --port "$PORT" >smoke.log 2>&1
 code=$?
 [ "$code" = 78 ] || fail "with no UNOTES_KEY the server exited $code, not 78: $(cat smoke.log)"
+# ...and so does `--doctor`, which reaches no `make`: `main` reads the login.
+env -u UNOTES_KEY -u UNOTES_PASSWORD bin/server --doctor >smoke.log 2>&1
+code=$?
+[ "$code" = 78 ] || fail "with no UNOTES_KEY --doctor exited $code, not 78: $(cat smoke.log)"
 
 # The sample BY NAME: with no variable the server prefers the real export
 # when one is in data/, and this probe asserts the sample's counts.
@@ -52,6 +56,11 @@ for _ in $(seq 1 50); do
     sleep 0.1
 done
 [ -n "$ready" ] || fail "no /health within 5 s"
+
+# HEAD is answered as the GET, the body dropped: an uptime check that sends
+# one reads the app as up (m0 0.3.0; it was 405 before).
+code=$(curl -s --max-time 5 -I -o /dev/null -w '%{http_code}' "$BASE/health")
+[ "$code" = 200 ] || fail "HEAD /health answered $code, not 200"
 
 # No session: a navigation is sent to the login page, a swap gets 401
 # carrying the form, and neither carries a word of the corpus.
@@ -74,6 +83,8 @@ grep -q 'HttpOnly.*unotes_session' "$JAR" || fail "login set no HttpOnly session
 # Signed in: a document, the bare fragment, a filter, a note, a theme.
 curl -s --max-time 5 -b "$JAR" "$BASE/notes" | grep -q '<!doctype html>' \
     || fail "GET /notes is not a document"
+code=$(curl -s --max-time 5 -b "$JAR" -I -o /dev/null -w '%{http_code}' "$BASE/notes/1")
+[ "$code" = 200 ] || fail "a signed-in HEAD /notes/1 answered $code, not 200"
 curl -s --max-time 5 -b "$JAR" -H 'HX-Request-Type: partial' "$BASE/notes" >smoke.body
 grep -q '^<section id="unotes"' smoke.body || fail "a partial GET /notes is not the bare fragment"
 grep -q '12 of 12 notes' smoke.body || fail "the list does not count the sample's 12 notes"

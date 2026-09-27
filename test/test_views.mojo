@@ -5,7 +5,8 @@ No link, no socket, no server — and no real notes: the corpus is the
 invented sample.
 """
 
-from std.testing import TestSuite, assert_equal, assert_false, assert_true
+from std.os import setenv
+from std.testing import TestSuite, assert_equal, assert_false, assert_raises, assert_true
 
 from lightbug_http.cookie.request_cookie_jar import RequestCookieJar
 from lightbug_http.header import Header, Headers, HeaderKey
@@ -14,12 +15,11 @@ from lightbug_http.http.date import unix_now
 from lightbug_http.io.bytes import Bytes
 from lightbug_http.uri import URI
 
-from m0_http import SessionKeys, Views, issue_session, verify_session
+from m0_http import Login, SessionKeys, Views, issue_session, verify_session
 
-from auth import Auth, SESSION_COOKIE
 from corpus import Filter, load_corpus
 from pages import excerpt, list_url
-from views import App, app_urls
+from views import App, SESSION_COOKIE, app_urls, login_from_env
 
 comptime KEY = "0123456789abcdef0123456789abcdef"
 
@@ -27,14 +27,16 @@ comptime KEY = "0123456789abcdef0123456789abcdef"
 def _app() raises -> App:
     var keys = SessionKeys()
     keys.add(Span(String(KEY).as_bytes()))
-    var auth = Auth(String("reader"), String("s3cret"), keys^, Int64(600), False)
-    return App(load_corpus("data/sample-notes.jsonl", "data/sample-themes.jsonl"), auth^)
+    var login = Login(
+        String("reader"), String("s3cret"), keys^, Int64(600), False, String(SESSION_COOKIE)
+    )
+    return App(load_corpus("data/sample-notes.jsonl", "data/sample-themes.jsonl"), login^)
 
 
 def _cookie(app: App) raises -> String:
     return String(
         SESSION_COOKIE, "=",
-        issue_session(app.auth.keys, app.auth.user, unix_now() + 600),
+        issue_session(app.login.keys, app.login.user, unix_now() + 600),
     )
 
 
@@ -53,6 +55,12 @@ def _get(path: String, cookie: String = "", partial: Bool = False) raises -> HTT
         headers["HX-Request-Type"] = "partial"
     return HTTPRequest(
         URI.parse(String("http://127.0.0.1", path)), headers=headers^, cookies=_jar(cookie)
+    )
+
+
+def _head(path: String, cookie: String = "") raises -> HTTPRequest:
+    return HTTPRequest(
+        URI.parse(String("http://127.0.0.1", path)), cookies=_jar(cookie), method="HEAD"
     )
 
 
@@ -98,7 +106,7 @@ def test_a_forged_or_expired_cookie_is_no_session() raises:
     other.add(Span(String("ffffffffffffffffffffffffffffffff").as_bytes()))
     var forged = String(SESSION_COOKIE, "=", issue_session(other, "reader", unix_now() + 600))
     assert_equal(table.dispatch(_get("/notes", forged), app).status_code, 303)
-    var stale = String(SESSION_COOKIE, "=", issue_session(app.auth.keys, "reader", unix_now() - 1))
+    var stale = String(SESSION_COOKIE, "=", issue_session(app.login.keys, "reader", unix_now() - 1))
     assert_equal(table.dispatch(_get("/notes", stale), app).status_code, 303)
 
 
@@ -119,9 +127,9 @@ def test_login_sets_the_cookie_and_a_wrong_password_does_not() raises:
 def test_logout_needs_this_sessions_token() raises:
     var app = _app()
     var table = app_urls()
-    var value = issue_session(app.auth.keys, app.auth.user, unix_now() + 600)
+    var value = issue_session(app.login.keys, app.login.user, unix_now() + 600)
     var cookie = String(SESSION_COOKIE, "=", value)
-    var session = verify_session(Span(value.as_bytes()), app.auth.keys, unix_now())
+    var session = verify_session(Span(value.as_bytes()), app.login.keys, unix_now())
     assert_equal(table.dispatch(_post("/logout", "", cookie), app).status_code, 403)
     assert_equal(table.dispatch(_post("/logout", "csrf=wrong", cookie), app).status_code, 403)
     var out = table.dispatch(_post("/logout", String("csrf=", session.csrf), cookie), app)
@@ -230,6 +238,44 @@ def test_every_swap_moves_the_address_bar() raises:
         assert_true(gets > 0, paths[i])
         assert_equal(body.count('hx-push-url="true"'), gets, paths[i])
         assert_false("hx-post=" in body, paths[i])
+
+
+def test_a_get_route_answers_head_as_its_get() raises:
+    """Since m0 0.3.0 (SPEC N38) an uptime check that sends HEAD no longer
+    reads the app as down. The guard runs as it does for the GET."""
+    var app = _app()
+    var table = app_urls()
+    var cookie = _cookie(app)
+    var paths: List[String] = ["/notes", "/notes/10", "/keywords", "/themes/1", "/login"]
+    for i in range(len(paths)):
+        assert_equal(table.dispatch(_head(paths[i], cookie), app).status_code, 200, paths[i])
+    assert_equal(table.dispatch(_head("/notes"), app).status_code, 303)
+
+
+def test_the_login_policy_is_read_from_unotes_variables() raises:
+    """The names and defaults this app has always used, now read by
+    `Login.from_env`: the prefix, the cookie, `reader`, twelve hours."""
+    _ = setenv("UNOTES_KEY", "0123456789abcdef0123456789abcdef", True)
+    _ = setenv("UNOTES_PASSWORD", "s3cret", True)
+    _ = setenv("UNOTES_USER", "", True)
+    _ = setenv("UNOTES_TTL", "", True)
+    _ = setenv("UNOTES_SECURE", "1", True)
+    var login = login_from_env()
+    assert_equal(login.user, "reader")
+    assert_equal(login.ttl, Int64(43200))
+    assert_equal(login.cookie, "unotes_session")
+    assert_true(login.secure)
+    assert_true(Bool(login.sign_in("reader", "s3cret")))
+    assert_false(Bool(login.sign_in("reader", "nope")))
+    # Stricter than the hand-written policy: `true` was read as off, and
+    # dropped `Secure` behind TLS without a word. Now it is refused.
+    _ = setenv("UNOTES_SECURE", "true", True)
+    with assert_raises(contains="UNOTES_SECURE"):
+        _ = login_from_env()
+    _ = setenv("UNOTES_SECURE", "", True)
+    _ = setenv("UNOTES_KEY", "short", True)
+    with assert_raises(contains="UNOTES_KEY"):
+        _ = login_from_env()
 
 
 def test_an_excerpt_never_cuts_a_codepoint() raises:

@@ -10,9 +10,10 @@ pushed (`push=True`): a filtered list that cannot be linked to is not worth
 filtering (SOAK_LOG.md, finding 3).
 """
 
-from m0_http import Fragment, Html, Htmx, PageShell, Query, attr, el, flag, text, url_for, void
+from m0_http import (
+    Fragment, Html, Htmx, PageShell, Query, attr, csrf_input, el, flag, text, url_for, void,
+)
 
-from auth import CSRF_FIELD
 from corpus import Corpus, Facet, Filter, PAGE_SIZE, page_count
 
 comptime HTMX_CDN = "https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/htmx.min.js"
@@ -132,7 +133,7 @@ def _chrome(f: Frag, user: String, csrf: String) raises -> String:
         # the address bar has to move with it (303 to /login). A swap left
         # the login form under the list's URL (SOAK_LOG.md, finding 4).
         el("form", attr("method", "post") + attr("action", url_for(LOGOUT)),
-            void("input", attr("type", "hidden") + attr("name", CSRF_FIELD) + attr("value", csrf)),
+            csrf_input(csrf),
             el("button", "", text(String("Sign out ", user))),
         ),
     )

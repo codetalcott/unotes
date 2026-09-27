@@ -5,7 +5,12 @@ The corpus is built once in `make` and never changed, so every view is
 same notes. The one write, logout, changes a cookie and no state.
 
 There is no middleware: every view under the session opens with the same
-two lines, `session_of` and an early return of `refuse`.
+two lines, `session_of` and an early return of `refuse`. The login itself —
+the configuration, the credential check, the cookie, the CSRF check and the
+refusals — is `m0_http.login`, the layer's copy of what this app and
+`apps/fragment_notes` each wrote by hand (SOAK_LOG.md, the second upgrade).
+What is here is the POLICY: the names, the one user, how long a session
+lasts.
 """
 
 from std.os import getenv
@@ -13,23 +18,22 @@ from std.os.path import exists
 from std.time import perf_counter_ns
 
 from lightbug_http import HTTPRequest, HTTPResponse
-from lightbug_http.http.date import unix_now
 from m0_host.host import HostContext, ViewState
 
 from m0_http import (
+    Login,
     SessionVerdict,
     Views,
+    csrf_refusal,
     form,
-    issue_session,
+    no_store,
     page_or_fragment,
+    refuse_signed_out,
     reply,
-    session_cookie_line,
     vary_on_fragment_headers,
-    verify_session,
     wants_fragment,
 )
 
-from auth import Auth, SESSION_COOKIE, csrf_refusal, private, session_of
 from corpus import Corpus, Filter, load_corpus
 from pages import (
     FAVICON, HEALTH, KEYWORD, KEYWORDS, LOGIN, LOGOUT, NOTE, NOTES, ROOT, THEME, THEMES,
@@ -45,16 +49,36 @@ comptime REAL_THEMES = "data/themes.jsonl"
 comptime SAMPLE_NOTES = "data/sample-notes.jsonl"
 comptime SAMPLE_THEMES = "data/sample-themes.jsonl"
 
+comptime LOGIN_ENV = "UNOTES"
+"""The login's prefix: `UNOTES_KEY` (32+ bytes) and `UNOTES_PASSWORD`
+required; `UNOTES_USER`, `UNOTES_TTL`, `UNOTES_SECURE` (`1` or `0`) and
+`UNOTES_KEY_PREV` optional."""
+comptime SESSION_COOKIE = "unotes_session"
+comptime DEFAULT_USER = "reader"
+comptime SESSION_TTL_DEFAULT = 43200
+"""Twelve hours: a working day, not a week."""
+
+
+def login_from_env() raises -> Login:
+    """The one user and the session's keys, or an error naming the variable
+    that cannot be served. Fail closed: these notes quote unpublished
+    archival work, and a server that quietly served everyone because a
+    deployment forgot a variable is worse than one that did not start."""
+    return Login.from_env(
+        LOGIN_ENV, SESSION_COOKIE,
+        default_user=DEFAULT_USER, default_ttl=SESSION_TTL_DEFAULT,
+    )
+
 
 struct App(ViewState):
     """What every view is handed: the notes and the one user."""
 
     var corpus: Corpus
-    var auth: Auth
+    var login: Login
 
-    def __init__(out self, var corpus: Corpus, var auth: Auth):
+    def __init__(out self, var corpus: Corpus, var login: Login):
         self.corpus = corpus^
-        self.auth = auth^
+        self.login = login^
 
     @staticmethod
     def make(ctx: HostContext) raises -> Self:
@@ -79,7 +103,7 @@ struct App(ViewState):
             "unotes: ", len(corpus), " notes, ", len(corpus.theme_titles),
             " themes from ", notes,
         ), flush=True)
-        return App(corpus^, Auth.from_env())
+        return App(corpus^, login_from_env())
 
     @staticmethod
     def urls() raises -> Views[Self]:
@@ -98,12 +122,9 @@ def refuse(req: HTTPRequest, verdict: SessionVerdict) raises -> HTTPResponse:
     the login page; a swap gets 401 carrying the form as the fragment,
     because a redirect a swap follows would put the login page inside the
     list with no way back."""
-    if wants_fragment(req):
-        return private(page_or_fragment(
-            req, render_login(String("signed out (", verdict.reason, ")")),
-            Site("sign in"), 401,
-        ))
-    return private(vary_on_fragment_headers(reply.redirect(303, LOGIN)))
+    return refuse_signed_out(
+        req, LOGIN, render_login(String("signed out (", verdict.reason, ")"))
+    )
 
 
 def filter_of(req: HTTPRequest) -> Filter:
@@ -135,7 +156,7 @@ def _listed(
         Site(title),
     )
     resp.headers["x-scan-us"] = String(scan_us)
-    return private(resp^)
+    return no_store(resp^)
 
 
 # --- views ---------------------------------------------------------------------
@@ -155,26 +176,23 @@ def login(req: HTTPRequest, params: List[String], app: App) raises -> HTTPRespon
             "the request body must be application/x-www-form-urlencoded", LOGIN,
         )
     var f = maybe.take()
-    if not app.auth.accepts(f.first("user"), f.first("password")):
-        return private(page_or_fragment(
+    var signed = app.login.sign_in(f.first("user"), f.first("password"))
+    if not signed:
+        return no_store(page_or_fragment(
             req, render_login(String("wrong user or password")), Site("sign in"), 401,
         ))
-    var value = issue_session(app.auth.keys, app.auth.user, unix_now() + app.auth.ttl)
     var resp: HTTPResponse
     if wants_fragment(req):
-        var session = verify_session(Span(value.as_bytes()), app.auth.keys, unix_now())
-        resp = _listed(req, app, Filter(), session, String("notes"))
+        resp = _listed(req, app, Filter(), signed.value().session, String("notes"))
     else:
         resp = vary_on_fragment_headers(reply.redirect(303, NOTES))
-    resp.cookies.add_raw(
-        session_cookie_line(SESSION_COOKIE, value, app.auth.ttl, app.auth.secure)
-    )
-    return private(resp^)
+    signed.value().set_cookie(resp)
+    return no_store(resp^)
 
 
 def logout(req: HTTPRequest, params: List[String], app: App) raises -> HTTPResponse:
     """POST /logout — expires the cookie. A write, so it carries the token."""
-    var session = session_of(req, app.auth)
+    var session = app.login.session_of(req)
     if not session.ok:
         return refuse(req, session)
     var refused = csrf_refusal(req, form(req), session, LOGOUT)
@@ -185,15 +203,13 @@ def logout(req: HTTPRequest, params: List[String], app: App) raises -> HTTPRespo
         resp = page_or_fragment(req, render_login(String("signed out")), Site("sign in"))
     else:
         resp = vary_on_fragment_headers(reply.redirect(303, LOGIN))
-    resp.cookies.add_raw(
-        session_cookie_line(SESSION_COOKIE, String(""), Int64(0), app.auth.secure)
-    )
-    return private(resp^)
+    app.login.sign_out(resp)
+    return no_store(resp^)
 
 
 def index(req: HTTPRequest, params: List[String], app: App) raises -> HTTPResponse:
     """GET /notes — the filtered list."""
-    var session = session_of(req, app.auth)
+    var session = app.login.session_of(req)
     if not session.ok:
         return refuse(req, session)
     return _listed(req, app, filter_of(req), session, String("notes"))
@@ -201,17 +217,17 @@ def index(req: HTTPRequest, params: List[String], app: App) raises -> HTTPRespon
 
 def detail(req: HTTPRequest, params: List[String], app: App) raises -> HTTPResponse:
     """GET /notes/:id — one note."""
-    var session = session_of(req, app.auth)
+    var session = app.login.session_of(req)
     if not session.ok:
         return refuse(req, session)
     var id = reply.param_int(params[0])
     var i = app.corpus.find(id) if id >= 0 else -1
     if i < 0:
-        return private(page_or_fragment(
+        return no_store(page_or_fragment(
             req, render_missing(String("no note with this id"), session.subject, session.csrf),
             Site("not found"), 404,
         ))
-    return private(page_or_fragment(
+    return no_store(page_or_fragment(
         req, render_note(app.corpus, i, session.subject, session.csrf),
         Site(String("note ", id)),
     ))
@@ -219,10 +235,10 @@ def detail(req: HTTPRequest, params: List[String], app: App) raises -> HTTPRespo
 
 def keywords(req: HTTPRequest, params: List[String], app: App) raises -> HTTPResponse:
     """GET /keywords — every keyword with its count."""
-    var session = session_of(req, app.auth)
+    var session = app.login.session_of(req)
     if not session.ok:
         return refuse(req, session)
-    return private(page_or_fragment(
+    return no_store(page_or_fragment(
         req, render_keywords(app.corpus, session.subject, session.csrf), Site("keywords")
     ))
 
@@ -230,7 +246,7 @@ def keywords(req: HTTPRequest, params: List[String], app: App) raises -> HTTPRes
 def keyword(req: HTTPRequest, params: List[String], app: App) raises -> HTTPResponse:
     """GET /keywords/:k — the list, filtered by one keyword. An unknown
     keyword is an empty list, not a 404: it is a filter, not a resource."""
-    var session = session_of(req, app.auth)
+    var session = app.login.session_of(req)
     if not session.ok:
         return refuse(req, session)
     var want = filter_of(req)
@@ -240,27 +256,27 @@ def keyword(req: HTTPRequest, params: List[String], app: App) raises -> HTTPResp
 
 def themes(req: HTTPRequest, params: List[String], app: App) raises -> HTTPResponse:
     """GET /themes — the theme map's titles."""
-    var session = session_of(req, app.auth)
+    var session = app.login.session_of(req)
     if not session.ok:
         return refuse(req, session)
-    return private(page_or_fragment(
+    return no_store(page_or_fragment(
         req, render_themes(app.corpus, session.subject, session.csrf), Site("themes")
     ))
 
 
 def theme(req: HTTPRequest, params: List[String], app: App) raises -> HTTPResponse:
     """GET /themes/:n — one theme and the notes it cites."""
-    var session = session_of(req, app.auth)
+    var session = app.login.session_of(req)
     if not session.ok:
         return refuse(req, session)
     var n = reply.param_int(params[0])
     var t = app.corpus.find_theme(n) if n >= 0 else -1
     if t < 0:
-        return private(page_or_fragment(
+        return no_store(page_or_fragment(
             req, render_missing(String("no theme with this number"), session.subject, session.csrf),
             Site("not found"), 404,
         ))
-    return private(page_or_fragment(
+    return no_store(page_or_fragment(
         req, render_theme(app.corpus, t, session.subject, session.csrf),
         Site(app.corpus.theme_titles[t]),
     ))

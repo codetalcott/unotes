@@ -3,7 +3,8 @@
 A reader for a research-notes corpus — faceted, searched in memory, behind
 one login. One compiled Mojo binary on the [`m0`](https://m0serve.dev/mojo/)
 framework, server-rendered and swapped in place by htmx 4; no Python at run
-time. Scaffolded with `uvx m0 new unotes` from the published `m0 0.1.0`.
+time. Scaffolded with `uvx m0 new unotes` from the published `m0 0.1.0`;
+on `m0 0.3.0` since 2026-09-27, whose `m0_http.login` is the login.
 Deployed at https://unotes.fly.dev (one Fly machine; the login is the owner's).
 
 This repository holds **no notes**. `data/sample-*.jsonl` is invented and is
@@ -12,7 +13,7 @@ what the tests, `smoke.sh` and CI read. The real corpus is exported into
 CI fail if either is ever tracked.
 
     uv sync
-    uv run m0 test                  # 22 tests, no link, no server
+    uv run m0 test                  # 25 tests, no link, no server
     ./smoke.sh                      # build, serve the sample, probe the wire
 
     # with the real database (stdlib Python; the app never opens SQLite):
@@ -23,9 +24,12 @@ CI fail if either is ever tracked.
 
 The server prefers `data/notes.jsonl` when it exists, else the sample, and
 prints which; `UNOTES_NOTES`/`UNOTES_THEMES` name other files. It refuses to
-start (exit 78) without `UNOTES_KEY` (32+ bytes) and `UNOTES_PASSWORD`.
-`UNOTES_USER` (default `reader`), `UNOTES_TTL` (seconds, default 12 h),
-`UNOTES_SECURE=1` (behind TLS) and `UNOTES_KEY_PREV` (rotation) are optional.
+start (exit 78) without `UNOTES_KEY` (32+ bytes) and `UNOTES_PASSWORD`, and
+`--doctor` refuses the same, so `uv run m0 doctor` needs them once
+`bin/server` exists.
+`UNOTES_USER` (default `reader`), `UNOTES_TTL` (seconds, default 12 h, at
+most 400 days), `UNOTES_SECURE` (`1` behind TLS, or `0`; anything else is
+refused) and `UNOTES_KEY_PREV` (rotation, 32+ bytes) are optional.
 
 `src/server.mojo`'s docstring has the routes. `AGENTS.md` is the framework's
 rules for an agent; `SOAK_LOG.md` is the running record of building this on
