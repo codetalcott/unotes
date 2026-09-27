@@ -13,8 +13,16 @@ dependencies = []
 [dependency-groups]
 dev = [
     "mojo==1.1.0",
-    "m0==0.2.0",
+    "m0==0.3.0",
 ]
+# MAX is optional, and pinned beside mojo when it is wanted: `parallelize`
+# and the rest of `max.algorithm` come with
+#
+#     uv add --dev 'max-core==26.6.0'
+#
+# and no other version -- `m0 doctor`'s `max-gated` check refuses one. See
+# AGENTS.md before reaching for it: it belongs in a producer's step, and a
+# binary that links it is served as threads, never as forked workers.
 
 # No [build-system], on purpose: there is nothing here for uv to build.
 [tool.uv]

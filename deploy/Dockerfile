@@ -50,6 +50,9 @@ RUN { uv run --frozen m0 build --release ${TARGET_CPU:+--target-cpu "$TARGET_CPU
 FROM ${BASE}
 
 ARG BASE
+# No RUNTIME_LIBS: m0 0.3.0's template installs libsqlite3-0 here for
+# m0_sqlite, and sets M0_DB under a writable /app/data. This app opens no
+# database, and its /app/data is the corpus (below), read-only.
 RUN useradd --system --create-home --uid 10001 app
 COPY --from=build /src/dist/ /app/
 # The corpus beside the binary: the sample always, the real export when the

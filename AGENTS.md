@@ -14,7 +14,7 @@ Always `uv run m0 …` (the project's own venv; `uvx` is for `m0 new` alone).
 | `uv run m0 test` | runs `test/test_*.mojo`; no link, no server | 2–4 s |
 | `uv run m0 build` | compiles `src/server.mojo` to `bin/server` | 10–13 s after an edit |
 | `uv run m0 dev` | builds, serves, and rebuilds when `src/` or `pyproject.toml` changes; the old server keeps serving until a build SUCCEEDS, so a syntax error costs a compiler message and not the page; `-- --port 8080` goes to the binary | a build per save |
-| `uv run m0 doctor` | every toolchain check, then the binary's resolved configuration; `--json` for a machine | < 1 s |
+| `uv run m0 doctor` | every toolchain check, then the binary's resolved configuration, then which of the files `m0 new` wrote differ from what this `m0` writes; `--json` for a machine | < 1 s |
 | `uv run m0 build --release` | a relocatable `dist/` for the baseline CPU | a build, plus the bundling |
 | `uv run m0 image` | `docker build -f deploy/Dockerfile`, then the image's own `about.json`; needs docker and a committed `uv.lock`, and no local toolchain | minutes the first time |
 | `./smoke.sh` | build, serve on its own port, probe the wire, stop | a build, plus a second |
@@ -82,30 +82,45 @@ functions in `test/test_*.mojo`; adding one needs no registration.
   script tag. A Datastar URL sits inside a JavaScript string: build it with
   `url_for`, which encodes; a URL carrying `'`, `\`, CR or LF is refused.
 
-## When a login arrives
+## A login
 
-Both scaffolds are sessionless, so no write carries a token. The day a
-session cookie exists, **every write needs a CSRF token**: a POST's as a
-hidden field; a DELETE's as an `X-CSRF-Token` header from a hand-written
-`hx-headers` attribute (htmx 4 puts a DELETE's fields in the query string,
-and a token in a URL is a token in every log) — the ONE `hx-` attribute
-typed by hand. `m0_http.session` has the signed cookie and `csrf_token`.
-The worked example is not installed with the framework: it is
-`apps/fragment_notes/server.mojo` at
-https://github.com/codetalcott/mojo-http — read its renderer as well as
-its views.
+`--template auth` has one: the list behind a signed session, every write
+carrying a CSRF token. `m0_http.login` is the glue it is written on, and
+what a `views` or `live` application adds the day it needs one.
 
+- `Login.from_env("APP", "NAME-session")` reads `APP_KEY` (at least 32
+  bytes) and `APP_PASSWORD`, and raises naming what is missing. Read it in
+  `main` BEFORE `serve` and exit 78 on the error, so `--doctor` refuses
+  what the run would; read it again in `make`.
+- A view behind it opens with two lines: `var session =
+  st.login.session_of(req)`, then, without one, `return
+  refuse_signed_out(req, LOGIN, render_login(...))` -- a 303 for a
+  navigation, a 401 carrying the form for a swap.
+- **Every write needs the session's CSRF token**, checked on the view's
+  next line by `csrf_refusal(req, form(req), session, url)`: a POST carries
+  it as a hidden field (`csrf_input(token)`), a DELETE as a header
+  (`header=csrf_header(token)` on its swap), because htmx 4 puts a DELETE's
+  fields in the query string and a token in a URL is a token in every log.
+  `Fragment[Datastar]` refuses a header: a Datastar write carries its token
+  in a field.
 - **Login and logout are PLAIN forms** (`el("form", attr("method", "post")
   + attr("action", url))`), answered with a 303 — never `f.el("form", …)`.
   A swap changes the fragment and not the address bar, so signing in
   leaves the application under `/login` and signing out leaves the login
-  form under whatever was open.
+  form under whatever was open. `sign_in(user, password)` is the
+  credential check and the session in one call.
+- Every answer the session chose is `no_store(...)`: `Vary` names the
+  fragment headers, not the cookie, and a cache in front would otherwise
+  hand one visitor's page to another.
 - **A hand-built request parses no `Cookie` header**; only the server's
   parser fills `req.cookies`. A test of a view behind a session fills the
-  jar itself: `var jar = RequestCookieJar()` (from
-  `lightbug_http.cookie.request_cookie_jar`), `jar.add_pairs("name=value")`,
-  then `HTTPRequest(uri, headers=…, cookies=jar^)`. Without it every such
-  test is answered as signed out.
+  jar itself: `var jar = RequestCookieJar()` (from `lightbug_http.cookie`),
+  `jar.add_pairs("name=value")`, then `HTTPRequest(uri, headers=…,
+  cookies=jar^)`. Without it every such test is answered as signed out.
+  The `auth` template's test signs in through the table and does this.
+- One user, its secret in the environment: no user table, no password
+  hashing, no session store. A session ends at its expiry, or when its key
+  leaves the ring (`APP_KEY_PREV` keeps the old key through a rotation).
 
 ## Streaming (SSE)
 
@@ -121,6 +136,32 @@ its views.
   returns `False`: a refused frame is otherwise invisible.
 - What workers and the producer share crosses a process boundary: it lives
   on the `page_slots` shared page, never in `malloc`'d memory.
+
+## Storage
+
+- `m0_sqlite` and `m0_postgres` ship with the framework and link NOTHING:
+  each opens its C library at run time (`libsqlite3`, `libpq`), so `m0
+  build` takes no flag and `m0 test` can open a database. The library
+  must be on the machine: `libsqlite3-0` is in the image already and
+  `libpq5` is one build argument away (`deploy/README.md`);
+  `M0_LIBSQLITE3` and `M0_LIBPQ` name a file outright.
+- **A connection belongs to one thread, opened where that thread runs**:
+  a handler's `make` (once per worker, loop or pool thread), a producer's
+  first `step`. Never before the fork, never shared across threads.
+  `open(path)` puts the file in WAL mode and refuses a target that cannot
+  be (`:memory:`); `open_memory()` is for tests.
+- **A value that must survive a restart is written in the request that
+  changes it**, so the answer the client sees is a committed row. A
+  producer that writes state back on its poll loses whatever landed
+  between its last poll and SIGTERM; `live` lost a kick that way on CI.
+- Two workers over one file are fine under WAL. A mutation that then
+  BROADCASTS holds the write lock (`db.begin_immediate()` … `db.commit()`)
+  from its change until its frame is numbered, or a stale render can take
+  the newer id and every tab shows the older list.
+- `M0_DB` names the file; the image points it at `/app/data`, the one
+  directory the container may write, and a deploy keeps it only on a
+  volume mounted there. The `live` template's `store.mojo` is the worked
+  example.
 
 ## Mojo traps this framework has paid for
 
@@ -141,13 +182,50 @@ Flag > environment > default; `bin/server --doctor` prints the result.
 `M0_BLOCKING_THREADS` (handler threads per loop), `M0_SPAWN_WORKERS`
 (refused), `M0_ACCESS_LOG`, `M0_SSE_HEARTBEAT_MS`, `M0_APP_TICK_MS`,
 `M0_MAX_KEEPALIVE_REQUESTS`, `M0_QOS`. A count that cannot be
-served is a 78 whichever way it arrived.
+served is a 78 whichever way it arrived. More than one core is
+`M0_THREADS=N`; `M0_WORKERS` forks, and is refused when the binary links
+MAX's parallel runtime (`max.algorithm.parallelize`), whose threads a
+fork does not copy.
 
 ## Probing a running server
 
 One port per run, never a shared one; wait for `/health` before the first
 probe; stop the server **by pid**, never by name; take the exit status from
 the probe, not from the last command of a pipe. `smoke.sh` does all four.
+
+## MAX, if a step needs every core
+
+- Optional, and pinned beside mojo: `uv add --dev 'max-core==X'` with the
+  X `m0 doctor`'s `max-gated` line names (`pyproject.toml` has it in a
+  comment). Any other version is refused: `max-core` pins its own
+  `mojo-compiler` exactly, so a second version is a second toolchain.
+- `parallelize` is `from max.algorithm import parallelize`, and its
+  closure needs a capture list: `def work(i: Int) {var out} -> None:`.
+- Where it belongs: a producer's `step`, or a heavy view that is rarely
+  busy twice at once. Never a hot route: under load it adds nothing (the
+  cores are already busy with other requests) and alone it pays the spread.
+- A binary that links it is served as loops on threads (`M0_THREADS`), and
+  `M0_WORKERS` above 1 is refused (78): a forked worker never returns from
+  `parallelize`, because `fork()` copies one thread and the runtime's
+  workers were started before `main`. On macOS this holds for every
+  binary built while `max-core` is installed, whether or not it imports
+  MAX -- the toolchain links the runtime regardless -- so there
+  `M0_THREADS` is the way to N cores for any app in a MAX venv.
+- `uv run m0 build --release` bundles its runtime library
+  (`libAsyncRTMojoBindings`) beside the binary with the rest, so the image
+  needs nothing more.
+
+## Upgrading m0
+
+Take the newer `m0` (`uv add --dev 'm0==X'`), then run `uv run m0 doctor`.
+Its `mojo-gated` line names the ONE `uv add` that moves the rest of the
+toolchain — `mojo`, and `max-core` beside it when it is installed, since
+`max-core` pins its own compiler exactly and moving `mojo` alone cannot
+resolve. Nothing rewrites this project's files: the doctor's `scaffold`
+line names those `m0 new` wrote — the deploy files, the ignore files, the
+workflow, this page — that differ from what the new `m0` writes, whether
+you edited them or an older `m0` wrote them. `uv run m0 new /tmp/NAME`
+writes the new ones beside yours; carry over what you want by hand.
 
 ## Not built, on purpose
 
