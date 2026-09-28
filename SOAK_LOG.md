@@ -759,3 +759,61 @@ and 22, were distinct characters, not keywords. The check iterated the
 joined string, and so it examined no keyword at all. Recounted: 164 in the
 real corpus and 15 in the sample, none of them `.` or `..`. The entry was
 corrected before either was published.
+
+## 2026-09-27 — the deploy, on 0.3.0 and the database
+
+**Which traffic this is: none generated.** No reader was signed in. The
+checks are the machine's own log and five probes without a session, since
+the password is a secret this session did not read. A signed-in page on the
+deploy, and the scan's figures on its CPU (measured for 0.2.0 above), are
+owed.
+
+The order mattered because `fly deploy` builds the working directory, not
+what GitHub holds. The one bad combination was the new data with the old
+code: 0.2.0's server, finding no `data/notes.jsonl`, would have served the
+invented sample without a word. So the steps were these:
+
+1. The PR was merged with GitHub's "Rebase and merge". It carried six
+   commits, two of them the 0.2.0 upgrade's, which had never been pushed.
+   The rebase rewrote every SHA, and `git pull --rebase` then dropped the
+   local originals as already upstream.
+2. `data/` was swapped. The old export was deleted, and
+   `sqlite3 -readonly … "VACUUM INTO 'data/notes.sqlite'"` made the copy,
+   in rollback-journal mode. The theme map was copied beside it.
+3. A local run said `535 notes, 12 themes from data/notes.sqlite`.
+4. The build and the rollout ran apart, as at the first upgrade.
+
+| step | result |
+|---|---|
+| `fly secrets list` | `UNOTES_KEY` and `UNOTES_PASSWORD` only, so 0.3.0's stricter `Login.from_env` had nothing new to refuse |
+| `fly deploy -c deploy/fly.toml --remote-only --build-only --push --image-label m0-0.3.0-sqlite` | ok, 117 s. `libsqlite3-0` 3.40.1 installed, the old-export guard passed, `built dist/ for x86-64-v2`. `about.json`: `"libs":"libsqlite3-0"`, `python: false`, app 5.32 MB, image 83.5 MB unpacked (0.2.0's: 4.46 MB and 81 MB) |
+| `fly deploy -c deploy/fly.toml --image registry.fly.io/unotes:m0-0.3.0-sqlite --ha=false` | ok, 18 s. Release v3, the same one machine, its check passing |
+| the machine's startup lines | `unotes: WARNING row 520 …`, then `unotes: 535 notes, 12 themes from data/notes.sqlite`. The database, not the sample |
+| probes | `GET /health` 200. `HEAD /health` 200, where every earlier deploy answered 405: N38, on the deploy target. `/notes` without a session is a 303 to `/login`, a swap without one a 401, and `/login` a 200 |
+
+### Finding 13 — the line that catches the eye names an address a browser will not open
+
+The server's first line is the app's, `unotes on http://localhost:8080`,
+and it is right. The next is the framework's, with the emoji and the word
+"listening": `🔥🐝 Lightbug is listening on http://0.0.0.0:8080`. That is
+the bind address, `M0_HOST`'s default. On the local check before this
+deploy, the owner opened it. The browser refused it as a restricted port:
+since the 2024 "0.0.0.0 Day" fix, Safari and Chrome both block `0.0.0.0` as
+a destination. The app's own line was there, first, and was missed on the
+first read, because the framework's line is the one that looks like the
+answer.
+
+The default bind costs a second thing. `0.0.0.0` is every interface, so a
+local run with the real notes was reachable from the local network, behind
+the login, until it was restarted with `--host 127.0.0.1`.
+
+The image already sets `M0_HOST=0.0.0.0` itself, in its `ENV`. So the
+binary's own default could be loopback without moving a deploy.
+Candidates: `127.0.0.1` as the host's default; and the listening line
+naming `base_url` beside the bind address, never `0.0.0.0` alone as a URL.
+
+Smaller, same place: `Ready to accept connections...` is printed before
+the handler's `make` runs. So a refused start reads "ready" and then
+"refused". The old-export refusal did exactly that: `Ready to accept
+connections...`, then `host: the handler's make raised, so this
+configuration is refused: …`.
