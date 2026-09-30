@@ -6,7 +6,8 @@ source had to be read to proceed. Kept from the first command. Newest last.
 
 Stack: `m0 0.1.0` from PyPI (published 2026-09-21), `mojo 1.1.0`, macOS
 arm64 (M4); `m0 0.2.0` from 2026-09-24 (the first upgrade, below); `m0
-0.3.0` from 2026-09-27 (the second). Read before starting, as a new user would: `packaging/m0/QUICKSTART.md`
+0.3.0` from 2026-09-27 (the second); `m0 0.4.0` from 2026-09-30 (the
+third). Read before starting, as a new user would: `packaging/m0/QUICKSTART.md`
 (the site's `/mojo/` pages were not yet deployed), then the scaffold's
 `AGENTS.md`.
 
@@ -278,6 +279,9 @@ shape did not recur in four more runs (three at two workers, one at one).
 At ~820 new connections a second it may be the client, the kernel or a
 server close with unread input; one occurrence cannot say. Recorded because
 a rerun that passes is not an explanation.
+
+*2026-09-30:* `m0 0.4.0` fixes a mechanism that fits it; see "the
+synthetic soak's one failure, revisited", under the third upgrade.
 
 **Two findings about the instrument, neither about the server:**
 
@@ -817,3 +821,201 @@ the handler's `make` runs. So a refused start reads "ready" and then
 "refused". The old-export refusal did exactly that: `Ready to accept
 connections...`, then `host: the handler's make raised, so this
 configuration is refused: …`.
+
+## 2026-09-30 — the third upgrade: `m0 0.3.0` → `0.4.0`
+
+`m0 0.4.0` reached PyPI at 03:38 UTC on 2026-09-30 (framework 1.8.0, commit
+`b1dca5b`), gated on the same `mojo 1.1.0`, and on the same `max-core
+26.6.0` for an application that installs it; this one does not. Most of
+1.8.0 is what a review of the whole tree found on 2026-09-28. Its entry for
+`m0` names one change an application must act on: `Login.from_env` refuses
+an unset `PREFIX_SECURE` (N43), which here is `UNOTES_SECURE`. The CHANGELOG
+credits nothing in the release to this app.
+
+The CHANGELOG is not in the wheel. It was read at the release commit in a
+local checkout of mojo-http (`git show b1dca5b:CHANGELOG.md`; the wheel's
+`_build_info.json` names the commit), and the two wheels were unpacked side
+by side to diff the framework's source and the templates.
+
+| step | result |
+|---|---|
+| `uv add --dev 'm0==0.4.0'`, the upgrading section's command | ok. It moved the pin and nothing else in `pyproject.toml`, comments included; `uv.lock` names `m0 0.4.0` from pypi.org. `mojo` did not move |
+| `uv run m0 doctor` | ok, every toolchain check. The `scaffold` line named the same seven files as at the second upgrade (below). The `app` line ran the old binary: finding 14 |
+| `uv run m0 test`, the app unedited | 36 of 36 |
+| `uv run m0 build`, the app unedited | ok, 13.1 s, no warning. `bin/server` 1,472,528 → 1,429,104 bytes, 42 KB less: the fork's removed code |
+| `./smoke.sh`, the app unedited | **FAIL**: `the server exited: unotes: UNOTES_SECURE is not set: 1 when the application is served over HTTPS (the session cookie then carries Secure), 0 over plain http such as http://localhost` |
+
+At the first two upgrades the version alone changed nothing the app could
+see, but for HEAD on the wire at the second. This one stopped the server
+from starting. It was the change the CHANGELOG names first, and it arrived
+as one line naming the fix. CI would have failed at the same step: its `m0
+doctor` runs before anything is built, so `./smoke.sh` is the first thing
+there that starts a server.
+
+### What the upgrade asked of the app
+
+`UNOTES_SECURE` was optional, and unset read as off. The deploy has stated
+`1` in `fly.toml`'s `[env]` since the login was written; no local run ever
+stated it. Now every place that starts the server states it:
+
+- `smoke.sh` runs the server with `UNOTES_SECURE=0`, since it serves plain
+  http on 127.0.0.1. A new probe gives `--doctor` the key and the password
+  but no `UNOTES_SECURE`, and wants 78 and the variable's name. It asks
+  `--doctor`, which starts nothing, so a regression fails the probe rather
+  than serving on the run's port. Against 0.3.0's binary it exits 0.
+- A new test, `test_unotes_secure_is_stated_or_the_server_does_not_start`:
+  unset is refused, naming the variable; `0` is off; `1` is on. `m0`
+  refuses to run outside the project's own venv, so `uvx --from m0==0.3.0`
+  could not run it against the old layer. A scratch copy of the project
+  pinned to 0.3.0 could, and there the test fails: "Didn't raise". That
+  makes 37 tests.
+- `test_the_login_policy_is_read_from_unotes_variables` cleared
+  `UNOTES_SECURE` before its short-key check. That still passed, but only
+  because `from_env` reads the key first, and the empty value is now a
+  refusal of its own. The check now sets `1` first.
+- The words: the README's command for the real notes and its paragraph on
+  the variables, `deploy/README.md` (below), `fly.toml`'s comment, and the
+  docstrings of `server.mojo` and `LOGIN_ENV`, which listed the variable as
+  optional.
+
+The deploy needs nothing new. The deploy entry above found the key and the
+password in `fly secrets list`, and `fly.toml` states the third.
+
+Nothing was deleted this time. In `src/`, two docstrings changed.
+
+### Finding 14 — the upgrade's two steps do not reach the change an application must act on
+
+The upgrading section is two steps: take the newer `m0`, then run `m0
+doctor`. At 0.4.0 neither step could show N43.
+
+- **The doctor's `app` line runs whatever `bin/server` is.** After `uv
+  add`, that is the binary the OLD `m0` built. Run with the key and the
+  password exported, which the README says the doctor needs, and without
+  `UNOTES_SECURE`, the doctor passed every line: `ok app: 0.0.0.0:8080,
+  single, 1 loops, 0 handler threads`. The same command after `m0 build`
+  exits 78, naming the variable. Nothing in the first report says the
+  binary predates the `m0` beside it. That is finding 8 from the inside:
+  no binary knows what built it.
+- **The scaffold line cannot show it.** It compares the files every
+  template shares, not `smoke.sh` and not `test/`. The change a `views`
+  app with a login needs is in those two, and `m0` made it only in the
+  `auth` template's copies.
+
+What did show it was the smoke's failure line, which named the fix, and
+the CHANGELOG, whose entry for `m0` opens with "What an application must
+act on". The CHANGELOG is not in the wheel, and `AGENTS.md` does not
+mention it. Candidates: the upgrading section runs `m0 build` before `m0
+doctor`, and points at the CHANGELOG's must-act list for each version
+crossed; and the doctor names a `bin/server` built by another `m0`, which
+finding 8's stamp would let it do.
+
+### What the scaffold line named, and what was taken
+
+The line named the same seven files as at the second upgrade, as finding
+11 said it would, so the three-way diff was taken again. 0.3.0's and
+0.4.0's scaffolds were each written with `uvx --from m0==X m0 new unotes`
+into a scratch directory, and each named file was compared with both.
+
+| file | `m0` changed it | this app had edited it | taken |
+|---|---|---|---|
+| `AGENTS.md` | yes: `APP_SECURE` in the login section | no | verbatim |
+| `deploy/README.md` | yes: a login's variables in `docker run`, and a login's Fly secrets | yes | both, with the `UNOTES_` names |
+| `deploy/fly.toml` | yes: `APP_SECURE = "1"` and a comment | yes: it already states `UNOTES_SECURE = "1"` | the comment's reasons, in the app's comment |
+| `.gitignore`, `.dockerignore`, `.github/workflows/test.yml`, `deploy/Dockerfile` | no | yes | — |
+
+Four of the seven were named for this app's edits alone, two for both, and
+one, `AGENTS.md`, for `m0`'s alone. Taken, it left the line, which now
+names six. `pyproject.toml`, which the doctor does not compare, is byte for
+byte what 0.4.0's `m0 new unotes` writes.
+
+The `docker run` line in `deploy/README.md` had never worked for this app:
+without the key and the password the server has exited 78 since the login
+was written. The template's new paragraph is the first to say what to
+pass. The rendered `fly.toml` states `APP_SECURE`, because `m0 new` fills
+in the app's name but not a login's prefix, so its line was not taken as
+written.
+
+### The wire, 0.3.0 against 0.4.0
+
+Both binaries ran on loopback, side by side, on the invented sample.
+0.3.0's was built from `dca6795` before the pin moved.
+
+The pages are the same bytes. Every route and state the app answers (21
+requests: signed in and out, document and fragment, 200, 204, 303, 401,
+403 and 404, and a HEAD) and ten list pages (five queries, each as document
+and as fragment) were compared: status line, reason phrase, headers and
+body, with `Date`, the cookie's value, the CSRF token and the scan's
+measured time set aside. None differed.
+
+| check | 0.3.0 | 0.4.0 |
+|---|---|---|
+| a session cookie the other binary signed, with the same key | 200, the fragment | 200, the fragment |
+| A23: a sign-in POST on a keep-alive connection, 35 s idle (the idle timeout is 60 s), then a GET on it | EOF: the server had closed it | 200 |
+| A25: `kill -PIPE` | died, −13 (a shell's 141) | survived; `/health` 200 |
+| A25: 2,000 pipelined `GET /health`, none read, then an RST 5 ms later; 100 times | **died 4 times** | died 0 times |
+
+What this means for the deploy:
+
+- A reader signed in on 0.3.0 stays signed in on 0.4.0, and on a rollback.
+  `session.mojo` was rewritten around a token reader it now shares with
+  `grant.mojo`, and the cookie did not change.
+- The browser walk was not repeated, since the pages are the same bytes.
+  `html.mojo`, `fragment.mojo`, `router.mojo` and `views.mojo` are
+  unchanged between the wheels.
+- A23 applied to this app. Its sign-in and sign-out are POSTs whose small
+  bodies arrive with the headers, and 0.3.0 closed such a connection 30 s
+  later, whatever it was doing. Nothing recorded above was traced to it.
+- A25 applied too. Upstream's probe resets during a 300 ms view, and no
+  view here is that slow, so the probe here was a burst still being
+  answered when its client reset. It killed 0.3.0 four times in a hundred,
+  and on macOS the whole process went with it. Whether it reached the
+  Linux build the deploy runs, this entry did not measure.
+
+### The synthetic soak's one failure, revisited
+
+Phase A on 2026-09-21 recorded one failure it could not explain: under
+`--workers 2` on macOS, a client's fresh connection was reset, and the
+server logged nothing. 1.8.0 fixes two mechanisms that could produce that.
+
+- A25 fits it worse. 0.1.0's supervisor, the one the soak ran, prints
+  `[parent] worker pid=… killed by signal 13` when SIGPIPE kills a worker,
+  and the entry says the server logged nothing.
+- E16 fits it better. On macOS, a connection passed between workers was
+  flushed in transit whenever any process on the machine closed a
+  Unix-domain socket. The worker that received it read nothing and closed
+  it, "so the client got an empty reply or a reset", and nothing was
+  logged.
+
+The soak was not re-run, so the failure is still unexplained. It now has a
+candidate a test could check.
+
+### What closed upstream, and what did not
+
+None of this log's open findings closed in 0.4.0:
+
+- 8: the binary's `--doctor` report carries its platform and no `m0` or
+  framework (finding 14), and the Dockerfile template, unchanged, writes
+  neither into `about.json`.
+- 9: no template's shell listens for `htmx:error`.
+- 10: `refuse_signed_out` is unchanged. A 401 is still pushed, and a
+  sign-in still lands on `/notes`.
+- 11: the upgrading section is unchanged. It still says to write only the
+  NEW scaffold, and this entry needed the old one too.
+- 12: the storage section still names `open` and `open_memory`, and not
+  `open_readonly`.
+- 13: the first lines are unchanged: `🔥🐝 Lightbug is listening on
+  http://0.0.0.0:PORT`, then `Ready to accept connections...` before
+  `make` runs. A refused start still reads "ready" and then "refused".
+
+What 1.8.0 fixed that this app never found: A23 and A25, above, and G1 and
+G2. A response head now refuses CR, LF and NUL on every path, and
+`reply.redirect` percent-encodes a control byte. No header or redirect here
+carries request data today. G2 makes a `next` taken from the query safe in
+a redirect's head, which is finding 10's candidate. It does not make that
+`next` local, which the candidate still has to check.
+
+Framework source read, before editing and not after a failure: the diffs
+of the two wheels' `m0_http/login.mojo`, `session.mojo` and `reply.mojo`,
+`m0_host/host.mojo` and `flags.mojo`, `m0/new.py` and the templates. The
+CHANGELOG named the login's change; the rest was read to find what else
+this app touches.
