@@ -1019,3 +1019,32 @@ of the two wheels' `m0_http/login.mojo`, `session.mojo` and `reply.mojo`,
 `m0_host/host.mojo` and `flags.mojo`, `m0/new.py` and the templates. The
 CHANGELOG named the login's change; the rest was read to find what else
 this app touches.
+
+## 2026-09-30 — the deploy, on 0.4.0
+
+**Which traffic this is: a probe, and no reader.** A signed-out `GET
+/health` every quarter second held the site across the rollout, and seven
+probes without a session followed. The password is a secret this session
+did not read, so a signed-in page on the deploy, and the scan's cost on its
+CPU, are still owed.
+
+The data did not move. `data/` held the copies the last deploy shipped: the
+owner's `notes.sqlite` was last written on 2026-05-22, before its `VACUUM
+INTO` copy of 2026-09-27, and the theme map is byte for byte its copy. So
+this deploy changed the framework and nothing else. It was deployed from the
+branch `m0-0.4.0` before a push, since `fly deploy` builds the working
+directory, not what GitHub holds.
+
+| step | result |
+|---|---|
+| `fly secrets list` | `UNOTES_KEY` and `UNOTES_PASSWORD`; `UNOTES_SECURE` comes from `fly.toml` |
+| `fly deploy -c deploy/fly.toml --remote-only --build-only --push --image-label m0-0.4.0` | ok, 70 s. The builder's `uv sync --frozen` installed `m0==0.4.0` and `mojo==1.1.0`; the old-export guard passed; `built dist/ for x86-64-v2`. `about.json`: `"libs":"libsqlite3-0"`, `python: false`, app 5.21 MB, image 83.4 MB unpacked (0.3.0's: 5.32 MB and 83.5 MB). It still names no framework (finding 8) |
+| `fly deploy -c deploy/fly.toml --image registry.fly.io/unotes:m0-0.4.0 --ha=false` | ok, 19 s. Release v4, the same one machine, its check passing |
+| the machine's lines | SIGINT at 17:33:23 UTC, and the 0.3.0 server exited 0. At 17:33:25 the 0.4.0 server printed `unotes: WARNING row 520 …`, then `unotes: 535 notes, 12 themes from data/notes.sqlite`. It started, so `UNOTES_SECURE` reached it |
+| the poller, 17:33:13 → 17:34:53 UTC | 312 requests, all answered 200. The one sent at 17:33:21 was held across the swap and answered after 5.5 s; no other took more than 0.15 s |
+| probes without a session | `GET /health` 200 and `HEAD /health` 200. `/notes` is a 303 to `/login`, a swap a 401, `/login` a 200 and a wrong password a 401. `http://` is a 301 to `https://` |
+
+A deploy is still one slow request and no failed one, as at 0.2.0. The way
+back is `fly deploy -c deploy/fly.toml --image
+registry.fly.io/unotes:m0-0.3.0-sqlite --ha=false`, release v3's image, and
+a session signed by either version is good on the other (the wire, above).
