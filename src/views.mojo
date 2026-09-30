@@ -52,9 +52,9 @@ comptime SAMPLE_THEMES = "data/sample-theme-map.md"
 comptime OLD_EXPORT = "data/notes.jsonl"
 
 comptime LOGIN_ENV = "UNOTES"
-"""The login's prefix: `UNOTES_KEY` (32+ bytes) and `UNOTES_PASSWORD`
-required; `UNOTES_USER`, `UNOTES_TTL`, `UNOTES_SECURE` (`1` or `0`) and
-`UNOTES_KEY_PREV` optional."""
+"""The login's prefix: `UNOTES_KEY` (32+ bytes), `UNOTES_PASSWORD` and
+`UNOTES_SECURE` (`1` behind HTTPS, `0` over plain http) required;
+`UNOTES_USER`, `UNOTES_TTL` and `UNOTES_KEY_PREV` optional."""
 comptime SESSION_COOKIE = "unotes_session"
 comptime DEFAULT_USER = "reader"
 comptime SESSION_TTL_DEFAULT = 43200

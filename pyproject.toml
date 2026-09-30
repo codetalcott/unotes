@@ -13,7 +13,7 @@ dependencies = []
 [dependency-groups]
 dev = [
     "mojo==1.1.0",
-    "m0==0.3.0",
+    "m0==0.4.0",
 ]
 # MAX is optional, and pinned beside mojo when it is wanted: `parallelize`
 # and the rest of `max.algorithm` come with

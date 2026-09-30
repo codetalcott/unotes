@@ -41,11 +41,21 @@ code=$?
 env -u UNOTES_KEY -u UNOTES_PASSWORD bin/server --doctor >smoke.log 2>&1
 code=$?
 [ "$code" = 78 ] || fail "with no UNOTES_KEY --doctor exited $code, not 78: $(cat smoke.log)"
+# With both but UNOTES_SECURE unstated, it refuses too (m0 0.4.0, SPEC N43):
+# whether the cookie is `Secure` is the deployment's to say. Asked of
+# `--doctor`, which starts nothing, so a regression fails here rather than
+# serving on this run's port.
+env -u UNOTES_SECURE UNOTES_KEY="smoke-key-0123456789abcdef0123456789" UNOTES_PASSWORD="smoke-pass" \
+    bin/server --doctor >smoke.log 2>&1
+code=$?
+[ "$code" = 78 ] || fail "with no UNOTES_SECURE --doctor exited $code, not 78: $(cat smoke.log)"
+grep -q UNOTES_SECURE smoke.log || fail "the refusal does not name UNOTES_SECURE: $(cat smoke.log)"
 
 # The sample BY NAME: with no variable the server prefers the real database
 # when one is in data/, and this probe asserts the sample's counts.
+# UNOTES_SECURE=0: this run is plain http on 127.0.0.1.
 UNOTES_NOTES=data/sample.sql UNOTES_THEMES=data/sample-theme-map.md \
-UNOTES_KEY="smoke-key-0123456789abcdef0123456789" UNOTES_PASSWORD="smoke-pass" \
+UNOTES_KEY="smoke-key-0123456789abcdef0123456789" UNOTES_PASSWORD="smoke-pass" UNOTES_SECURE=0 \
     bin/server --port "$PORT" >smoke.log 2>&1 &
 PID=$!
 

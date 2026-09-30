@@ -273,10 +273,26 @@ def test_the_login_policy_is_read_from_unotes_variables() raises:
     _ = setenv("UNOTES_SECURE", "true", True)
     with assert_raises(contains="UNOTES_SECURE"):
         _ = login_from_env()
-    _ = setenv("UNOTES_SECURE", "", True)
+    _ = setenv("UNOTES_SECURE", "1", True)
     _ = setenv("UNOTES_KEY", "short", True)
     with assert_raises(contains="UNOTES_KEY"):
         _ = login_from_env()
+
+
+def test_unotes_secure_is_stated_or_the_server_does_not_start() raises:
+    """Since m0 0.4.0 (SPEC N43) `UNOTES_SECURE` has no default. Unset used
+    to read as off, which sends the session cookie in clear on a visitor's
+    first http:// request, before any redirect to HTTPS. The deploy states
+    `1` (`deploy/fly.toml`); a local run, `smoke.sh` and a test state `0`."""
+    _ = setenv("UNOTES_KEY", "0123456789abcdef0123456789abcdef", True)
+    _ = setenv("UNOTES_PASSWORD", "s3cret", True)
+    _ = setenv("UNOTES_SECURE", "", True)
+    with assert_raises(contains="UNOTES_SECURE"):
+        _ = login_from_env()
+    _ = setenv("UNOTES_SECURE", "0", True)
+    assert_false(login_from_env().secure)
+    _ = setenv("UNOTES_SECURE", "1", True)
+    assert_true(login_from_env().secure)
 
 
 def test_an_excerpt_never_cuts_a_codepoint() raises:
