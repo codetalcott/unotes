@@ -4,7 +4,7 @@ A reader for a research-notes corpus — faceted, searched in memory, behind
 one login. One compiled Mojo binary on the [`m0`](https://m0serve.dev/mojo/)
 framework, server-rendered and swapped in place by htmx 4; no Python at run
 time. Scaffolded with `uvx m0 new unotes` from the published `m0 0.1.0`;
-on `m0 0.3.0` since 2026-09-27, whose `m0_http.login` is the login.
+on `m0 0.4.0` since 2026-09-30, whose `m0_http.login` is the login.
 Deployed at https://unotes.fly.dev (one Fly machine; the login is the owner's).
 
 This repository holds **no notes**. `data/sample.sql` and
@@ -15,13 +15,13 @@ database read-only, never written. Their copies in `data/` are gitignored,
 and `smoke.sh` and CI fail if either is ever tracked.
 
     uv sync
-    uv run m0 test                  # 36 tests, no link, no server
+    uv run m0 test                  # 37 tests, no link, no server
     ./smoke.sh                      # build, serve the sample, probe the wire
 
     # the real notes, read where they live:
     UNOTES_NOTES=PATH/notes.sqlite UNOTES_THEMES=PATH/ideas/theme-map.md \
     UNOTES_KEY=$(python3 -c "import secrets;print(secrets.token_hex(24))") \
-    UNOTES_PASSWORD=... bin/server --port 8080
+    UNOTES_PASSWORD=... UNOTES_SECURE=0 bin/server --port 8080
 
 With neither variable the server reads `data/notes.sqlite` and
 `data/theme-map.md` when they are there, else the sample, and prints which.
@@ -40,12 +40,13 @@ in its place; an image refuses to build while the old export is in `data/`
 at all. libsqlite3 is opened at run time: macOS has one, the image
 installs `libsqlite3-0`, and `M0_LIBSQLITE3` names another.
 
-The server refuses to start (exit 78) without `UNOTES_KEY` (32+ bytes) and
-`UNOTES_PASSWORD`, and `--doctor` refuses the same, so `uv run m0 doctor`
-needs them once `bin/server` exists.
+The server refuses to start (exit 78) without `UNOTES_KEY` (32+ bytes),
+`UNOTES_PASSWORD` and `UNOTES_SECURE` (`1` behind TLS, as `deploy/fly.toml`
+states it; `0` over plain http such as `http://localhost`; anything else
+is refused), and `--doctor` refuses the same, so `uv run m0 doctor` needs
+all three once `bin/server` exists.
 `UNOTES_USER` (default `reader`), `UNOTES_TTL` (seconds, default 12 h, at
-most 400 days), `UNOTES_SECURE` (`1` behind TLS, or `0`; anything else is
-refused) and `UNOTES_KEY_PREV` (rotation, 32+ bytes) are optional.
+most 400 days) and `UNOTES_KEY_PREV` (rotation, 32+ bytes) are optional.
 
 `src/server.mojo`'s docstring has the routes. `AGENTS.md` is the framework's
 rules for an agent; `SOAK_LOG.md` is the running record of building this on

@@ -9,8 +9,14 @@ context.
 ```sh
 uv sync                                         # once; commit uv.lock
 uv run m0 image                                 # docker build -f deploy/Dockerfile -t unotes .
-docker run --rm -p 8080:8080 unotes
+docker run --rm -p 8080:8080 -e UNOTES_KEY -e UNOTES_PASSWORD -e UNOTES_SECURE=0 unotes
 ```
+
+The login's variables go into the container too: `UNOTES_KEY` and
+`UNOTES_PASSWORD` from the shell that exported them, and `UNOTES_SECURE=0`
+because this is plain http. The image states none of the three, so a
+platform that states nothing is refused (exit 78) rather than served with
+the session cookie in clear.
 
 The builder stage runs `uv run m0 build --release`: the platform's baseline
 CPU, never the builder's own. `/app/about.json` in the image is what the
@@ -45,6 +51,12 @@ fly scale count 1 -a unotes
   survive that.
 - `scale count 1`: the first deploy creates two machines. State held in
   the process is one machine's; see the comment in `fly.toml`.
+- The login's secrets are set once, before the first deploy, and never
+  written in `fly.toml`: `fly secrets set -a unotes
+  UNOTES_KEY="$(openssl rand -hex 32)" UNOTES_PASSWORD='choose one'`.
+  `fly.toml` already states `UNOTES_SECURE = "1"`, since the proxy serves
+  HTTPS; on another platform, state it there, or the server refuses to
+  start (exit 78, naming it).
 - One loop. On one shared vCPU a second worker or thread cannot run beside
   the first, so `M0_WORKERS`/`M0_THREADS` stay unset. On more than one
   vCPU, set `M0_THREADS` to the count.

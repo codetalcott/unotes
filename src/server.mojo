@@ -20,8 +20,9 @@ is `m0_http.login`; `sources.mojo` reads the corpus. The input is the
 owner's `notes.sqlite`, opened read-only, and `theme-map.md`: UNOTES_NOTES
 and UNOTES_THEMES name them, else `data/notes.sqlite` and
 `data/theme-map.md` are read when there, else the invented sample in
-`data/` is served. UNOTES_KEY (32+ bytes) and UNOTES_PASSWORD are required;
-the server refuses to start without them, and so does `--doctor`.
+`data/` is served. UNOTES_KEY (32+ bytes), UNOTES_PASSWORD and UNOTES_SECURE
+(`1` behind HTTPS, `0` over plain http) are required; the server refuses to
+start without them, and so does `--doctor`.
 
 Build it:  uv run m0 build      Test it:  uv run m0 test
 """

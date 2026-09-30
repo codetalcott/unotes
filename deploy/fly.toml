@@ -20,9 +20,12 @@ primary_region = "iad"
 [env]
   # A comment frame every 25 s keeps a quiet stream open through the proxy.
   M0_SSE_HEARTBEAT_MS = "25000"
-  # Behind Fly's TLS: the session cookie is `Secure`. UNOTES_KEY (32+ bytes)
-  # and UNOTES_PASSWORD are SECRETS (`fly secrets set`), never written here;
-  # without them the server exits 78 and the deploy fails its health check.
+  # Behind Fly's TLS (`force_https` below), so the session cookie carries
+  # `Secure` and no browser sends it on a visitor's first http:// request,
+  # before the redirect. Since m0 0.4.0 the server will not start with it
+  # unstated. UNOTES_KEY (32+ bytes) and UNOTES_PASSWORD are SECRETS (`fly
+  # secrets set`), never written here; without any of the three the server
+  # exits 78 and the deploy fails its health check.
   UNOTES_SECURE = "1"
 
 [http_service]
