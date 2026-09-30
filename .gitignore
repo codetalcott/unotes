@@ -17,3 +17,7 @@ data/theme-map.md
 data/notes.jsonl
 data/themes.jsonl
 smoke.jar
+
+# serve.sh's settings for this machine: where the notes live, and a local
+# password. smoke.sh and CI fail if it is ever tracked.
+.env.local
