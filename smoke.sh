@@ -23,9 +23,10 @@ fail() {
     exit 1
 }
 
-# The guard. The real notes and the theme map are unpublished; git history
-# is permanent, and one `git add -A` with them present publishes them.
-for private in data/notes.sqlite data/theme-map.md data/notes.jsonl data/themes.jsonl; do
+# The guard. The real notes and the theme map are unpublished, and
+# .env.local says where they live; git history is permanent, and one `git
+# add -A` with them present publishes them.
+for private in data/notes.sqlite data/theme-map.md data/notes.jsonl data/themes.jsonl .env.local; do
     if git ls-files --error-unmatch "$private" >/dev/null 2>&1; then
         fail "$private is TRACKED by git. Remove it from the index and from history before anything is pushed."
     fi

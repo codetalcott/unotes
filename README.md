@@ -17,11 +17,22 @@ and `smoke.sh` and CI fail if either is ever tracked.
     uv sync
     uv run m0 test                  # 37 tests, no link, no server
     ./smoke.sh                      # build, serve the sample, probe the wire
+    ./serve.sh                      # the real notes at http://localhost:8080
 
-    # the real notes, read where they live:
-    UNOTES_NOTES=PATH/notes.sqlite UNOTES_THEMES=PATH/ideas/theme-map.md \
-    UNOTES_KEY=$(python3 -c "import secrets;print(secrets.token_hex(24))") \
-    UNOTES_PASSWORD=... UNOTES_SECURE=0 bin/server --port 8080
+`./serve.sh [PORT]` reads the real notes where they live, and works from
+any directory. It serves on 127.0.0.1 only (the host's default, 0.0.0.0,
+puts the notes on the local network), states `UNOTES_SECURE=0`, makes a
+fresh key, and builds first when `src/` has changed. Where the notes are,
+and the password you sign in with as `reader`, come from `.env.local`,
+which is gitignored; `smoke.sh` and CI fail if it is ever tracked:
+
+    UNOTES_NOTES=PATH/notes.sqlite
+    UNOTES_THEMES=PATH/ideas/theme-map.md
+    UNOTES_PASSWORD=...
+
+The environment wins over the file, so
+`UNOTES_NOTES=data/sample.sql UNOTES_THEMES=data/sample-theme-map.md ./serve.sh`
+serves the sample.
 
 With neither variable the server reads `data/notes.sqlite` and
 `data/theme-map.md` when they are there, else the sample, and prints which.
