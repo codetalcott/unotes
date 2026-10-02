@@ -1048,3 +1048,45 @@ A deploy is still one slow request and no failed one, as at 0.2.0. The way
 back is `fly deploy -c deploy/fly.toml --image
 registry.fly.io/unotes:m0-0.3.0-sqlite --ha=false`, release v3's image, and
 a session signed by either version is good on the other (the wire, above).
+
+## 2026-10-02 — the soak, re-run on 0.4.0, and the two things owed
+
+**Which traffic this is: synthetic, then a signed-in probe of the deploy.**
+The record is mojo-http's `docs/REAL_APP_VALIDATION.md`, "The application
+layer", which this entry is the source of.
+
+`scripts/soak.py` from mojo-http's `main` against `bin/server` at `21673f2`
+(`m0` 0.4.0, framework 1.8.0), the real corpus, M4. The capture was taken
+from the same binary one request at a time. Six bursts, four sessions, two
+abandoners paced at 50 ms, a SIGTERM and restart every 40 s:
+
+| row | seconds | verified | failures | restarts | worst drain | RSS |
+|---|---|---|---|---|---|---|
+| `--workers 2` | 180 | 1,748,962 | 0 | 4, exit 0 each | 3 ms | 17,296 → 17,312 kB |
+| `--threads 2` | 90 | 864,732 | 0 | 2, exit 0 each | 38 ms | 23,072 → 23,072 kB |
+
+The flags that matter: `--burst 6 --sessions 4 --bulk 0 --stream 0 --ws 0
+--abandon 2 --abandon-pause 0.05 --churn-every 40`. The server ran with
+`OS_ACTIVITY_MODE=disable`, since a forked worker opens SQLite after the
+fork on macOS.
+
+**Finding 15: the manifest does not pace the driver's logins.** A first
+attempt left soak.py's `bulk` population on. With a login block and no
+`min_interval_seconds`, it signs in as fast as it can, about 170 times a
+second here, and the client ran out of local ports inside 15 s: 232,946
+failures at two workers and 132,239 at two threads, every one `OSError 49`
+on a connect. 668,856 and 338,161 responses were verified in those runs
+and none was wrong. The instrument again, as on 2026-09-21, and the fix is
+this manifest's: an interval in its login block, or `--bulk 0` as above.
+
+The abandonment failure of 2026-09-21 did not recur in 9,722 abandonments
+across the two rows. That is still not an explanation of it.
+
+**The two things owed since the deploy on 0.4.0**, taken with the password
+from `.env.local`, which is also the deploy's:
+
+- A signed-in page on the deploy: `/notes`, `/notes/25` and `/themes` each
+  200; `/notes` signed out, 303.
+- The scan on its CPU, `x-scan-us`, six of each: no filter 6–9 µs (60 on
+  the first request), `q=the` 164–189 (573 on the first), `q=football`
+  1,227–1,517, `q=zzzzqqqq` 1,256–1,595. The figures of 0.1.0 and 0.3.0.
