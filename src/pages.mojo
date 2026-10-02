@@ -11,7 +11,8 @@ filtering (SOAK_LOG.md, finding 3).
 """
 
 from m0_http import (
-    Fragment, Html, Htmx, PageShell, Query, attr, csrf_input, el, flag, text, url_for, void,
+    Fragment, Html, Htmx, PageShell, Query, RESOURCE_ITEM, attr, csrf_input, el, flag, text,
+    url_for, void,
 )
 
 from corpus import Corpus, Facet, Filter, PAGE_SIZE, page_count
@@ -24,11 +25,11 @@ comptime FAVICON = "/favicon.ico"
 comptime LOGIN = "/login"
 comptime LOGOUT = "/logout"
 comptime NOTES = "/notes"
-comptime NOTE = "/notes/:id"
+comptime NOTE = NOTES + RESOURCE_ITEM
 comptime KEYWORDS = "/keywords"
-comptime KEYWORD = "/keywords/:k"
+comptime KEYWORD = KEYWORDS + RESOURCE_ITEM
 comptime THEMES = "/themes"
-comptime THEME = "/themes/:n"
+comptime THEME = THEMES + RESOURCE_ITEM
 
 comptime ROOT_ID = "unotes"
 comptime EXCERPT_BYTES = 280

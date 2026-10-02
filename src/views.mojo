@@ -319,10 +319,11 @@ def app_urls() raises -> Views[App]:
     v.add_read("GET", LOGIN, login_form)
     v.add_read("POST", LOGIN, login)
     v.add_read("POST", LOGOUT, logout)
-    v.add_read("GET", NOTES, index)
-    v.add_read("GET", NOTE, detail)
-    v.add_read("GET", KEYWORDS, keywords)
-    v.add_read("GET", KEYWORD, keyword)
-    v.add_read("GET", THEMES, themes)
-    v.add_read("GET", THEME, theme)
+    # Three collections, each a list and its rows: `resource` registers
+    # the pair under one pattern, and the row's pattern in pages.mojo is
+    # that pattern and `RESOURCE_ITEM`. Read-only, so the other slots are
+    # empty and register nothing.
+    v.resource(NOTES, list=index, show=detail)
+    v.resource(KEYWORDS, list=keywords, show=keyword)
+    v.resource(THEMES, list=themes, show=theme)
     return v^

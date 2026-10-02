@@ -1090,3 +1090,51 @@ from `.env.local`, which is also the deploy's:
 - The scan on its CPU, `x-scan-us`, six of each: no filter 6–9 µs (60 on
   the first request), `q=the` 164–189 (573 on the first), `q=football`
   1,227–1,517, `q=zzzzqqqq` 1,256–1,595. The figures of 0.1.0 and 0.3.0.
+
+## 2026-10-02 — the fourth upgrade: `m0 0.4.0` → `0.5.0`, and what of it fits
+
+`m0 0.5.0` reached PyPI on 2026-10-02 (framework 1.9.0, commit `e2a88d7`),
+on the same `mojo 1.1.0`. What it adds for an application is a resource
+over a table: `Views.resource`, `Connection.data_version()`, and `Cached`
+with `conditional`. This app was named as the round's first user outside
+the tree.
+
+| step | result |
+|---|---|
+| the pin, `uv sync` | `m0==0.5.0` from pypi.org |
+| `m0 doctor` | every check as on 0.4.0; `scaffold` names the six files this app edited, as before |
+| `m0 build`, `m0 test`, `smoke.sh` | built, 3 of 3 files, ok; nothing to act on |
+| the names 0.5.0 removed | none imported here |
+
+**`resource`: taken.** The table's six lines for the notes, the keywords
+and the themes are three, `v.resource(NOTES, list=index, show=detail)` and
+its two siblings, and each row's pattern is its collection's and
+`RESOURCE_ITEM`. The captures were `:id`, `:k` and `:n` and are all `:id`
+now; nothing read the names. Held to the capture taken from the 0.4.0
+build, under load at two workers for 30 s: 285,194 responses, 0 failures,
+1,087 abandonments. The same bytes.
+
+**Finding 16: `conditional` has nothing to say to a page that is
+`no-store`.** Every page here is behind the session and leaves through
+`no_store`, as `m0_http.login` advises: a private page is not one to keep.
+A browser that may not store a response never sends its tag back, so the
+304 has no request to answer. Taking it means changing the policy to
+`private, no-cache`, which lets the reader's own browser keep the page and
+ask before showing it. That is a decision about the notes, not about the
+code, and it is the owner's. The layer's note says the same of
+`apps/fragment_notes`; this is the second application to meet it, and the
+first where the saving would be real: the list is 23 KB and a search scans
+for 1.2–1.6 ms on the deploy's CPU.
+
+**Finding 17: the clock has nothing to watch on the deploy.** The corpus
+is read once in `make` into lists and never again; the image carries a copy
+of the database that no one writes. `data_version` would matter only where
+`serve.sh` reads the live `notes.sqlite`, to re-read the corpus when the
+notes change instead of at the next restart. That is a change of shape,
+every view becoming one that may write, for a file last written in May.
+Not taken. The sample, a `.sql` script run into memory, has no second
+connection to ask at all.
+
+So of the three pieces this app takes one. The other two were built
+against a table that changes under a public page (`apps/table_notes`), and
+this is a private reader over a table that does not.
