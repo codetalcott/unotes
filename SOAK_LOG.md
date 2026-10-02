@@ -1138,3 +1138,17 @@ connection to ask at all.
 So of the three pieces this app takes one. The other two were built
 against a table that changes under a public page (`apps/table_notes`), and
 this is a private reader over a table that does not.
+
+## 2026-10-02 — the deploy, on 0.5.0
+
+**Which traffic this is: a probe, then a signed-in check.** Merged to
+`main` at `5433286` and deployed from it. The image was built remotely and
+pushed as `m0-0.5.0` (25 MB), then released to the same one machine,
+release v5. A signed-out `GET /health` every quarter second held the site
+across the rollout: 352 of 352 answered 200.
+
+Signed in afterwards, with the password from `.env.local`: `/notes`,
+`/notes/25`, `/keywords`, `/keywords/athletics`, `/themes` and `/themes/7`
+each 200, the six routes `resource` now registers. The pages are still
+`no-store`: the owner chose to leave the policy as it is (finding 16).
+The data did not move; the image carries the copies of 2026-09-27.
