@@ -1,0 +1,15 @@
+{
+  "enabledPlugins": {
+    "mojo-skills@modular": true,
+    "mojo-lsp@wtalcott": true
+  },
+  "extraKnownMarketplaces": {
+    "modular": {
+      "source": {
+        "source": "github",
+        "repo": "modular/skills"
+      },
+      "autoUpdate": true
+    }
+  }
+}
