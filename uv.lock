@@ -13,10 +13,10 @@ wheels = [
 
 [[package]]
 name = "m0"
-version = "0.5.0"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c4/ff/0b7e2a4bd2dd78d11beb87fc4f45f8fa0e67942867acef122e17bf28e5b3/m0-0.5.0-py3-none-any.whl", hash = "sha256:16a49788542021cd8f784979d44552b62c1b0f679d4321970fc13f0279770d47", size = 665220, upload-time = "2026-10-02T18:21:04.614Z" },
+    { url = "https://files.pythonhosted.org/packages/89/a9/a9956ec6fabe4820cbf533df402c074aa585fe8b292990cc05c85533b948/m0-0.7.0-py3-none-any.whl", hash = "sha256:79c468574f72a40800d514bc0a5cb5e9556e5836dd0b203863014167154976d5", size = 681880, upload-time = "2026-10-06T18:14:15.866Z" },
 ]
 
 [[package]]
@@ -176,6 +176,6 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "m0", specifier = "==0.5.0" },
+    { name = "m0", specifier = "==0.7.0" },
     { name = "mojo", specifier = "==1.1.0" },
 ]

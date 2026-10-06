@@ -1203,3 +1203,25 @@ application. Nothing here is touched by either:
 
 The scratch build above is that upgrade's evidence, but it was not made
 here, because an upgrade is this log's own entry.
+
+## 2026-10-06 — the fifth upgrade: `m0 0.5.0` → `0.7.0`
+
+`m0 0.7.0` (framework 1.11.0) is on PyPI, on the same `mojo 1.1.0`, and
+this is the upgrade the entry above said was still to do. It skips 0.6.0:
+`uv` takes the newer pin in one step, and both changelog entries were
+read against this app before it moved.
+
+| step | result |
+|---|---|
+| the pin, `uv sync` | `m0==0.7.0` from pypi.org; `pyproject.toml` and `uv.lock` the only files changed |
+| `m0 doctor` | every toolchain check ok; `app` ok once `UNOTES_KEY`, `UNOTES_PASSWORD` and `UNOTES_SECURE` are set, and refused (78) without them, as designed; `scaffold` names the same six files this app edited |
+| `m0 build`, `m0 test`, `smoke.sh` | built (15 s), 3 of 3 files (16 tests), ok |
+| what 0.6.0 and 0.7.0 ask an application to change | none applies: no `ViewState` method named `tick` or `sse_*`, no `StaticFiles`, and nothing here or in `deploy/` sets or reads `M0_ACCESS_LOG` |
+
+Neither release adds anything this app takes. 0.6.0's stamps and `Feed`
+answer a table that changes, and finding 17 still holds: the corpus is
+read once and the image carries a copy no one writes. 0.7.0's changes are
+to static files and the access log, and this app uses neither. The soak
+above was run on the same framework and stands as this build's load
+evidence. It was taken from a scratch clone at `97b3c1c`, which differs
+from this commit only in the pin. The deploy is still on 0.5.0.
