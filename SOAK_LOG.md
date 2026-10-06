@@ -1225,3 +1225,26 @@ to static files and the access log, and this app uses neither. The soak
 above was run on the same framework and stands as this build's load
 evidence. It was taken from a scratch clone at `97b3c1c`, which differs
 from this commit only in the pin. The deploy is still on 0.5.0.
+
+## 2026-10-06 — the deploy, on 0.7.0
+
+**Which traffic this is: a probe, then a signed-in check.** Pushed to
+`main` at `adda4d2` and deployed from it. The data did not move: the
+owner's `notes.sqlite` was last written on 2026-05-22, and the theme map
+is byte for byte the copy in `data/`, so this deploy changed the framework
+and nothing else.
+
+| step | result |
+|---|---|
+| `fly secrets list` | `UNOTES_KEY` and `UNOTES_PASSWORD`, as before |
+| `fly deploy -c deploy/fly.toml --remote-only --build-only --push --image-label m0-0.7.0` | ok, 99 s. The builder installed `m0==0.7.0` and `mojo==1.1.0`; `built dist/ for x86-64-v2`. `about.json`: `"libs":"libsqlite3-0"`, `python: false`, app 5.27 MB, image 83.5 MB unpacked; 25 MB pushed |
+| `fly deploy -c deploy/fly.toml --image registry.fly.io/unotes:m0-0.7.0 --ha=false` | ok, 19 s. Release v6, the same one machine, its check passing |
+| the machine's lines | SIGINT at 21:41:48 UTC, and the 0.5.0 server exited 0. At 21:41:50 the 0.7.0 server printed `unotes: WARNING row 520 …`, then `unotes: 535 notes, 12 themes from data/notes.sqlite` |
+| the poller, 21:41:33 → 21:43:21 UTC | 306 signed-out `GET /health`, all answered 200. The one sent at 21:41:46 was held across the swap and answered after 7.5 s; no other took more than 0.15 s |
+
+Signed in afterwards, with the password from `.env.local`: the login a
+303 to `/notes`, then `/notes`, `/notes/25`, `/keywords`,
+`/keywords/athletics`, `/themes` and `/themes/7` each 200 with the page,
+in 46–67 ms. Signed out, `/notes` is a 303 to `/login` and a swap a 401.
+The pages are still `no-store` (finding 16). The way back is release v5's
+image, `registry.fly.io/unotes:m0-0.5.0`.
