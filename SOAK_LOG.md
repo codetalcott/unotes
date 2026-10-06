@@ -1152,3 +1152,54 @@ Signed in afterwards, with the password from `.env.local`: `/notes`,
 each 200, the six routes `resource` now registers. The pages are still
 `no-store`: the owner chose to leave the policy as it is (finding 16).
 The data did not move; the image carries the copies of 2026-09-27.
+
+## 2026-10-06 — the soak on framework 1.11.0, before `m0` 0.7.0 reached the index
+
+**Which traffic this is: synthetic.** The record is mojo-http's
+`docs/REAL_APP_VALIDATION.md`, "The application layer", which this entry
+is the source of. It was run for mojo-http's 1.11.0 release: the layer's
+milestone wants this soak no more than two minors behind the framework,
+and the 2026-10-02 run was on 1.8.0.
+
+**What was built.** This repository at `97b3c1c`, unchanged, in a scratch
+clone whose pin moved from `m0==0.5.0` to `m0==0.7.0`: the wheel cut from
+mojo-http's release branch at `3e64f2a` (framework 1.11.0), reached
+through `find-links` before it was uploaded. `main` here still pins 0.5.0.
+The clone was thrown away, and taking 0.7.0 from the index is an upgrade
+of its own (below).
+
+| step | result |
+|---|---|
+| `m0 doctor` | framework 1.11.0; `scaffold` names the same six files this app edited |
+| `m0 build`, `m0 test`, `smoke.sh` | built, 3 of 3 files (16 tests), ok |
+
+**The soak.** `scripts/soak.py` from mojo-http's release branch against
+that `bin/server`, the real corpus, an M4 on macOS 27. The capture was
+taken from the same binary one request at a time, and the flags were
+2026-10-02's: `--burst 6 --sessions 4 --bulk 0 --stream 0 --ws 0
+--abandon 2 --abandon-pause 0.05 --churn-every 40`, with
+`OS_ACTIVITY_MODE=disable`. The driver is mojo-http's
+`bench/soak/2026-10-06/layer_unotes.sh`.
+
+| row | seconds | verified | failures | restarts | worst drain | RSS |
+|---|---|---|---|---|---|---|
+| `--workers 2` | 180 | 1,409,040 | 0 | 4, exit 0 each | 4 ms | 17,296 → 17,296 kB |
+| `--threads 2` | 90 | 814,210 | 0 | 2, exit 0 each | 45 ms | 23,024 → 23,152 kB |
+
+The two rows had 6,005 and 3,037 abandonments. 11,035 and 6,397 requests
+met a restart; each was counted apart, never more than 525 ms from one.
+Fewer responses were verified than on 2026-10-02 (1,748,962 and 864,732).
+Another session's process held a core throughout, and the rows assert
+bytes, not rate.
+
+**Owed: the fifth upgrade, `m0 0.5.0` → `0.7.0`.** Both reached the index
+on 2026-10-06, and mojo-http's CHANGELOG says what each changes for an
+application. Nothing here is touched by either:
+
+- this app serves no `StaticFiles`;
+- it reads no access log;
+- its `ViewState` declares none of the stream hooks or the `tick` that
+  0.6.0 began calling.
+
+The scratch build above is that upgrade's evidence, but it was not made
+here, because an upgrade is this log's own entry.
