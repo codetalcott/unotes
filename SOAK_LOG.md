@@ -1248,3 +1248,38 @@ Signed in afterwards, with the password from `.env.local`: the login a
 in 46–67 ms. Signed out, `/notes` is a 303 to `/login` and a swap a 401.
 The pages are still `no-store` (finding 16). The way back is release v5's
 image, `registry.fly.io/unotes:m0-0.5.0`.
+
+## 2026-10-10 — the sixth upgrade: `m0 0.7.0` → `0.11.0`
+
+`m0 0.11.0` (framework 1.14.0) is on PyPI, on the same `mojo 1.1.0`. It
+skips 0.8.0, 0.9.0, 0.9.1 and 0.10.0: `uv` takes the newer pin in one
+step, and the four changelog entries in between (1.12.0, 1.12.1, 1.13.0,
+1.14.0) were read against this app before it moved.
+
+| step | result |
+|---|---|
+| the pin, `uv add --dev 'm0==0.11.0'` | from pypi.org; `pyproject.toml` and `uv.lock` the only files changed, and `mojo-gated` still `mojo 1.1.0`, so nothing else moves |
+| `m0 doctor` | every toolchain check ok; `app` ok once `UNOTES_KEY`, `UNOTES_PASSWORD` and `UNOTES_SECURE` are set, and refused (78) without them, as designed. `--doctor` now runs the `port` check first (1.13.0) |
+| `m0 build`, `m0 test`, `smoke.sh` | built (14 s), 3 of 3 files (37 tests: 9, 12, 16), ok. The entry above counted only the last file's 16 |
+| what 1.12.0–1.14.0 ask an application to change | none applies: no import here names a fork or `m0_http` name these releases moved, renamed or removed (`server_is_tls`, `URIParseError`, `GrantKeys.keys`, the descriptor helpers, `recv`/`send`, `from_parsed`, the client and response-parser code), and nothing passes `--port 0` or `M0_PORT=0` |
+| `scaffold` | named seven files, `AGENTS.md` new among them: 0.9.1 changed the template's copy. The other six are byte for byte what 0.7.0 wrote, so this app's edits to them stand |
+
+`AGENTS.md` is taken from the 0.11.0 `views` template, as at 0.2.0, 0.3.0
+and 0.4.0; this app's copy had no edits of its own. It names the two
+reference pages ahead of the installed source, `--host 127.0.0.1` for a
+run on this machine alone, the signatures of `reply`, `void` for a void
+element, Datastar 1.0's 200-only rule, and `on_loop=True` and the bus for
+streams. After it, the doctor's `scaffold` names the same six files this
+app edited.
+
+Nothing in the four releases is a feature this app takes. 1.12.0's replay
+journal is for held streams, and this app has none. The rest is fixes in
+the server's HTTP core, the security fixes of 1.12.1 among them (a header
+value that could split a response built in Mojo, a bare-LF head that put
+the parser and the loop's framing out of step), which this app takes by
+rebuilding. The framework's own release record soaked this app on 1.14.0
+(`docs/REAL_APP_VALIDATION.md`, "The application layer", 2026-10-09):
+`45a1cdd`, the pin moved in a scratch clone to the 0.11.0 wheel cut from
+the release branch ahead of its upload, 1,762,770 and 881,953 responses
+verified byte for byte across two workers and two loops, with no failure.
+That stands as this build's load evidence. The deploy is still on 0.7.0.
