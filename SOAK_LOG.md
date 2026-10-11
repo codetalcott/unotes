@@ -1351,3 +1351,32 @@ SIGINT and the new one printing its count two to three seconds after, and
 they do not time the exit alone, so whether either met it is not known;
 it is the one fix on this app's path at a deploy. The deploy is still on
 0.11.0.
+
+## 2026-10-11 — the deploy, on 0.12.0
+
+**Which traffic this is: a probe, then a signed-in check.** Pushed to
+`main` at `ef88a21`, its Tests run green, and deployed from it. The data
+did not move: the owner's `notes.sqlite` was last written on 2026-05-22,
+before its `VACUUM INTO` copy of 2026-09-27, with no WAL beside it, and
+the theme map is byte for byte the copy in `data/`, so this deploy
+changed the framework and nothing else.
+
+| step | result |
+|---|---|
+| `fly secrets list` | `UNOTES_KEY` and `UNOTES_PASSWORD`, as before |
+| `fly deploy -c deploy/fly.toml --remote-only --build-only --push --image-label m0-0.12.0` | ok, 76 s. The builder installed `m0==0.12.0` and `mojo==1.1.0`; `built dist/ for x86-64-v2`. `about.json`: `"libs":"libsqlite3-0"`, `python: false`, app 5.26 MB, image 83.5 MB unpacked; 25 MB pushed |
+| `fly deploy -c deploy/fly.toml --image registry.fly.io/unotes:m0-0.12.0 --ha=false` | ok, 18 s. Release v8, the same one machine, its check passing |
+| the machine's lines | SIGINT at 16:53:44 UTC, and the 0.11.0 server exited 0 within the second. At 16:53:46 the 0.12.0 server printed `unotes: WARNING row 520 …`, then `unotes: 535 notes, 12 themes from data/notes.sqlite`. Fly's proxy logged one `instance refused connection`, at 16:53:44; no client saw it |
+| the poller, 16:53:14 → 16:54:34 UTC | 214 signed-out `GET /health`, all answered 200. The one sent at 16:53:44 was held across the swap and answered after 3.4 s; no other took more than 0.07 s |
+
+The old server's exit is timed this once: under a second from Fly's
+SIGINT, so the drain #611 fixed was not held on this machine at this
+swap. The upgrade entry above left that unknown for the earlier deploys.
+
+Signed in afterwards, with the password from `.env.local`: the login a
+303 to `/notes`, then `/notes`, `/notes/25`, `/keywords`,
+`/keywords/athletics`, `/themes` and `/themes/7` each 200 with the page,
+in 35–54 ms. Signed out, `/notes` is a 303 to `/login` and a swap a 401,
+and `http://` is a 301 to `https://`. The pages are still `no-store`
+(finding 16). The way back is release v7's image,
+`registry.fly.io/unotes:m0-0.11.0`.
