@@ -5,6 +5,7 @@ __pycache__/
 .vscode/
 smoke.log
 smoke.body
+.dist.next/
 
 # The real notes database and theme map are the owner's unpublished
 # material. They reach the image from the working directory, never from

@@ -1308,3 +1308,46 @@ in 37–50 ms. Signed out, `/notes` is a 303 to `/login` and a swap a 401,
 and `http://` is a 301 to `https://`. The pages are still `no-store`
 (finding 16). The way back is release v6's image,
 `registry.fly.io/unotes:m0-0.7.0`.
+
+## 2026-10-11 — the seventh upgrade: `m0 0.11.0` → `0.12.0`
+
+`m0 0.12.0` (framework 1.15.0) is on PyPI, uploaded this morning, on the
+same `mojo 1.1.0`. Its one changelog entry was read against this app
+before it moved.
+
+| step | result |
+|---|---|
+| the pin, `uv add --dev 'm0==0.12.0'` | from pypi.org; `pyproject.toml` and `uv.lock` the only files it changed, and `mojo-gated` still `mojo 1.1.0`, so nothing else moves |
+| `m0 doctor` | every toolchain check ok; `app` ok with `UNOTES_KEY`, `UNOTES_PASSWORD` and `UNOTES_SECURE` set |
+| `m0 build`, `m0 test`, `smoke.sh` | built (35 s, the first build on the new framework source), 3 of 3 files (37 tests: 9, 12, 16), ok |
+| `serve.sh` on the owner's notes | `/health` 200; `535 notes, 12 themes`, and the one row warning, as at the last deploy |
+| what 1.15.0 asks an application to change | none applies. The two contract changes are m0serve's (a WSGI header holding an underscore, `--replay-frames` above 4096). m0-sqlite now refuses a NUL byte in `execute` and a connection's path: `open_notes` runs `data/sample.sql` through `execute`, and the smoke serving the sample says it holds none. Nothing here uses a closed `Connection` or a finalized `Statement`, `parse_json_int` or `parse_json_bool` |
+| `scaffold` | named seven files, `AGENTS.md` among them again: the template's copy changed. The other six differ from 0.11.0's only in the two lines below |
+
+Against the 0.11.0 `views` template, 0.12.0 changes three files, and this
+app takes each by hand, since a template is written once:
+
+- `AGENTS.md`, taken whole as at 0.11.0; this app's copy had no edits of
+  its own. It adds that a view reading or writing state held in one process
+  is `on_loop=True`, and that a full-state frame must fit a slot's 64 KB
+  outbox. Neither binds here: the corpus is built once in `make` and never
+  changed, so a pool thread's copy is the same notes, and there is no
+  stream. After it, the doctor's `scaffold` names the same six files as
+  before.
+- `smoke.sh` serves on `--host 127.0.0.1`, as `serve.sh` already does
+  (finding 13): both of its `bin/server --port` lines, the refusal's
+  included, so a refusal that regressed would not put the sample on every
+  interface.
+- `.gitignore` takes `.dist.next/`, the staging directory `m0 build
+  --release` leaves behind. Not `smoke.one` or `smoke.two`, which the
+  template's smoke writes and this one does not; `smoke.jar` was already
+  here.
+
+Nothing in 1.15.0 is a feature this app takes. What it takes by rebuilding
+is the shutdown drain (#611): a keep-alive connection holding a stray CRLF
+held it to its 5 s budget, past a Fly machine's default `kill_timeout`.
+The last two deploys' records show the old server exiting 0 on Fly's
+SIGINT and the new one printing its count two to three seconds after, and
+they do not time the exit alone, so whether either met it is not known;
+it is the one fix on this app's path at a deploy. The deploy is still on
+0.11.0.

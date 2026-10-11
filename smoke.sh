@@ -35,7 +35,7 @@ done
 uv run m0 build || fail "m0 build"
 
 # Without a key and a password the server must refuse to start (exit 78).
-env -u UNOTES_KEY -u UNOTES_PASSWORD bin/server --port "$PORT" >smoke.log 2>&1
+env -u UNOTES_KEY -u UNOTES_PASSWORD bin/server --host 127.0.0.1 --port "$PORT" >smoke.log 2>&1
 code=$?
 [ "$code" = 78 ] || fail "with no UNOTES_KEY the server exited $code, not 78: $(cat smoke.log)"
 # ...and so does `--doctor`, which reaches no `make`: `main` reads the login.
@@ -57,7 +57,7 @@ grep -q UNOTES_SECURE smoke.log || fail "the refusal does not name UNOTES_SECURE
 # UNOTES_SECURE=0: this run is plain http on 127.0.0.1.
 UNOTES_NOTES=data/sample.sql UNOTES_THEMES=data/sample-theme-map.md \
 UNOTES_KEY="smoke-key-0123456789abcdef0123456789" UNOTES_PASSWORD="smoke-pass" UNOTES_SECURE=0 \
-    bin/server --port "$PORT" >smoke.log 2>&1 &
+    bin/server --host 127.0.0.1 --port "$PORT" >smoke.log 2>&1 &
 PID=$!
 
 ready=""
